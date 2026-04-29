@@ -1,0 +1,1909 @@
+#include <WiFi.h>
+#include <Network.h>
+#include <NetworkClient.h>
+#include <WebServer.h>
+#include <ArduinoJson.h>
+#include <PZEM004Tv30.h> // Installer via le gestionnaire de bibliothèques
+
+// --- CONFIGURATION RÉSEAU ---
+// Le système émettra son propre réseau Wi-Fi local de manière 100% autonome.
+const char* ssid = "ADAPTRON_V5_HORS_LIGNE"; // Le nom du réseau affiché sur votre téléphone
+const char* password = "adaptronadmin";  // Mot de passe (doit faire 8 caractères min.)
+
+// --- BROCHES MATÉRIELLES ---
+#define PIN_SSR 26        // Relais SSR
+#define PIN_TRIAC 27      // TRIAC pour l'optimisation
+#define PZEM_RX_PIN 16    // Vers TX du PZEM
+#define PZEM_TX_PIN 17    // Vers RX du PZEM
+
+PZEM004Tv30 pzem(Serial2, PZEM_RX_PIN, PZEM_TX_PIN);
+WebServer server(80);
+
+// --- VARIABLES D'ÉTAT ---
+bool ssrStatus = false;
+float batterySOC = 85.0; // Simulation batterie (à lier à un capteur ADC si présent)
+
+// ==========================================
+// CODE HTML + CSS + JS (APPLICATION WEB COMPLETE SPA)
+// ENGLOBÉ DANS LA MÉMOIRE FLASH ESP32 (PROGMEM)
+// ==========================================
+const char INDEX_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADAPTRON V5 - System Manager</title>
+    <meta name="description" content="Tableau de bord intelligent ADAPTRON V5 — Gestion d'énergie hybride avec IA embarquée.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- TensorFlow.js — ML en navigateur -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+:root {
+    /* Charte ADAPTRON */
+    --bg-main: #020816;
+    --bg-panel: #0A142A;
+    --bg-sidebar: #050E20;
+    --glass-border: rgba(0, 163, 255, 0.15);
+    
+    --text-main: #FFFFFF;
+    --text-muted: #8AA4C8;
+    
+    --accent-cyan: #00A3FF; 
+    --accent-blue: #003366;
+    --accent-orange: #FF7F00;
+    --accent-green: #30D158;
+    --accent-red: #FF453A;
+
+    --font-heading: 'Outfit', sans-serif;
+    --font-body: 'Inter', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { 
+    background-color: var(--bg-main); 
+    color: var(--text-main); 
+    font-family: var(--font-body); 
+    min-height: 100vh;
+    background-image: 
+        radial-gradient(circle at right 20%, rgba(0,163,255,0.08), transparent 40%), 
+        radial-gradient(circle at left 80%, rgba(255,127,0,0.05), transparent 40%);
+    overflow: hidden;
+}
+
+/* APP LAYOUT */
+.app-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* ═══════════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════════ */
+.sidebar {
+    width: 280px;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem 1rem;
+    position: relative;
+    z-index: 10;
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 3rem;
+    padding-left: 10px;
+}
+
+.logo-icon {
+    display: flex;
+    align-items: center;
+    filter: drop-shadow(0 0 10px rgba(0,163,255,0.4));
+}
+
+.logo-text {
+    font-family: var(--font-heading);
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.version {
+    color: var(--accent-orange);
+    font-weight: 400;
+    font-size: 1rem;
+    vertical-align: top;
+    margin-left: 2px;
+}
+
+/* Nav Menu */
+.nav-menu {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.nav-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 1.05rem;
+    text-align: left;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+}
+
+.nav-icon { font-size: 1.2rem; }
+
+/* Badge anomalie */
+.nav-badge {
+    margin-left: auto;
+    background: var(--accent-red);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: pulse 1s infinite;
+}
+
+.nav-btn:hover { background: rgba(0, 163, 255, 0.05); color: var(--text-main); }
+.nav-btn.active { 
+    background: linear-gradient(90deg, rgba(0, 163, 255, 0.15), transparent); 
+    color: var(--accent-cyan); 
+    border-left: 4px solid var(--accent-cyan);
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    padding-top: 1rem;
+    text-align: center;
+}
+.sidebar-footer p { color: var(--text-muted); font-size: 0.8rem; margin-top: 10px; }
+
+/* ML Mini-status in sidebar */
+.ml-mini-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 12px;
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+}
+
+.ml-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #555;
+    flex-shrink: 0;
+    transition: background 0.5s;
+}
+.ml-dot.collecting { background: var(--accent-orange); animation: pulse 2s infinite; }
+.ml-dot.training   { background: var(--accent-cyan);   animation: pulse 0.8s infinite; }
+.ml-dot.ready      { background: var(--accent-green);  }
+
+/* MAIN CONTENT */
+.main-content {
+    flex: 1;
+    padding: 2.5rem 3rem;
+    overflow-y: auto;
+}
+
+/* View switcher */
+.view-section { display: none; }
+.view-section.active { display: block; animation: fadeIn 0.4s ease-out forwards; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.view-header { margin-bottom: 2rem; }
+.view-header h2 { font-family: var(--font-heading); font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+.subtitle { color: var(--text-muted); font-size: 1.1rem; }
+
+/* Panels & Cards */
+.glass-panel { background: var(--bg-panel); border: 1px solid var(--glass-border); border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4); }
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem; }
+.card { padding: 1.8rem; display: flex; flex-direction: column; }
+.card.col-span-2 { grid-column: span 1 / -1; }
+
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+.card-header h3 { font-family: var(--font-heading); font-size: 1.3rem; font-weight: 600; color: #fff; }
+
+/* Stats grid */
+.stats-grid { display: grid; gap: 1rem; }
+.stats-grid.col-2 { grid-template-columns: 1fr 1fr; }
+.stats-grid.col-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+.stat-label { display: block; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600; }
+.stat-value { font-size: 2.4rem; font-family: var(--font-heading); font-weight: 700; color: var(--text-main); }
+.unit { font-size: 1.1rem; color: var(--text-muted); font-weight: 400; }
+.mt-4 { margin-top: 1.5rem; }
+
+/* Colors */
+.highlight-orange { color: var(--accent-orange); text-shadow: 0 0 10px rgba(255,127,0,0.3); }
+.highlight-cyan { color: var(--accent-cyan); text-shadow: 0 0 10px rgba(0,163,255,0.3); }
+.text-cyan { color: var(--accent-cyan); font-size: 1rem !important; margin-top: 10px; font-weight: 600; }
+.highlight-green { color: var(--accent-green); text-shadow: 0 0 10px rgba(48,209,88,0.3); }
+
+/* Battery */
+.battery-container { display: flex; align-items: center; gap: 20px; background: rgba(0,0,0,0.3); padding: 1.5rem; border-radius: 16px; margin-bottom: 1.5rem; border: 1px solid rgba(255,127,0,0.15); }
+.battery-visual { width: 80px; height: 40px; border: 3px solid var(--text-muted); border-radius: 6px; position: relative; padding: 2px; }
+.battery-visual::after { content: ''; position: absolute; right: -8px; top: 50%; transform: translateY(-50%); width: 5px; height: 16px; background: var(--text-muted); border-radius: 0 3px 3px 0; }
+.battery-level { height: 100%; background: linear-gradient(90deg, var(--accent-orange), #FFAA00); border-radius: 2px; box-shadow: 0 0 15px rgba(255, 127, 0, 0.4); transition: width 1s ease; }
+.battery-text { display: flex; flex-direction: column; }
+.soc { font-size: 2rem; font-weight: 700; font-family: var(--font-heading); color: var(--accent-orange); }
+.time-left { font-size: 0.9rem; color: var(--text-muted); }
+.orange-border { border-color: rgba(255,127,0,0.3); }
+
+/* Buttons */
+.controls-grid { display: flex; gap: 15px; flex-wrap: wrap; }
+.btn { padding: 1rem 1.5rem; border: none; border-radius: 12px; font-family: var(--font-heading); font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; font-size: 1rem; flex: 1; text-align: center; color: #FFF; }
+.btn-cyan { background: linear-gradient(135deg, var(--accent-cyan), #0077B3); box-shadow: 0 4px 15px rgba(0, 163, 255, 0.3); }
+.btn-cyan:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 163, 255, 0.5); }
+.btn-orange { background: linear-gradient(135deg, var(--accent-orange), #CC6600); box-shadow: 0 4px 15px rgba(255, 127, 0, 0.3); }
+.btn-orange:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255, 127, 0, 0.5); }
+.btn-blue { background: linear-gradient(135deg, var(--accent-blue), #002244); border: 1px solid var(--accent-cyan); box-shadow: 0 4px 15px rgba(0, 51, 102, 0.4); }
+.btn-blue:hover { transform: translateY(-2px); background: #004488; }
+.btn-dark { background: #0A142A; border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); }
+.btn-dark:hover { background: #132442; transform: translateY(-2px); color: #fff; }
+.btn-red { background: linear-gradient(135deg, var(--accent-red), #CC2200); }
+.btn-red:hover { transform: translateY(-2px); }
+
+/* Chart */
+.chart-container { position: relative; height: 350px; width: 100%; margin-top: 10px; }
+
+/* System status */
+.system-status { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 0.9rem; font-weight: 600; color: var(--accent-green); background: rgba(48,209,88,0.1); padding: 10px 18px; border-radius: 50px; border: 1px solid rgba(48,209,88,0.3); }
+.status-indicator { width: 10px; height: 10px; border-radius: 50%; background-color: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); animation: pulse 2s infinite; }
+
+/* Forms */
+.settings-form { display: flex; flex-direction: column; gap: 20px; }
+.form-group { display: flex; flex-direction: column; gap: 8px; }
+.form-group label { font-size: 0.9rem; color: var(--text-muted); font-weight: 600; }
+.input-field { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #FFF; padding: 12px 15px; border-radius: 8px; font-family: var(--font-body); font-size: 1rem; outline: none; transition: border-color 0.2s; }
+.input-field:focus { border-color: var(--accent-cyan); }
+.form-group small { color: #5B7290; font-size: 0.8rem; }
+
+/* ROI Section */
+.box-stat { background: rgba(0,0,0,0.2); padding: 1.5rem; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); }
+.box-stat.highlight-bg { background: linear-gradient(135deg, rgba(48,209,88,0.15), rgba(0,0,0,0.2)); border-color: rgba(48,209,88,0.3); }
+.roi-simulator { background: rgba(0,0,0,0.2); padding: 2rem; border-radius: 16px; margin-top: 2rem; }
+.roi-simulator h4 { font-family: var(--font-heading); font-size: 1.2rem; margin-bottom: 10px; }
+.styled-slider { width: 100%; margin: 20px 0; -webkit-appearance: none; background: #333; height: 6px; border-radius: 5px; outline: none; }
+.styled-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; background: var(--accent-cyan); border-radius: 50%; cursor: pointer; box-shadow: 0 0 10px rgba(0,163,255,0.5); }
+
+/* Animations */
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes glow  { 0%, 100% { box-shadow: 0 0 10px rgba(0,163,255,0.3); } 50% { box-shadow: 0 0 25px rgba(0,163,255,0.7); } }
+
+/* ═══════════════════════════════════════════
+   VUE IA — COMPOSANTS SPÉCIFIQUES
+═══════════════════════════════════════════ */
+
+.ia-card { min-height: 320px; }
+
+/* ── Statut du modèle ── */
+.model-status-body { display: flex; flex-direction: column; gap: 18px; flex: 1; }
+
+.model-phase-badge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(0, 163, 255, 0.08);
+    border: 1px solid rgba(0, 163, 255, 0.2);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-family: var(--font-heading);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    transition: all 0.5s ease;
+}
+.model-phase-badge.training { 
+    background: rgba(255, 127, 0, 0.08);
+    border-color: rgba(255, 127, 0, 0.3);
+    color: var(--accent-orange);
+    animation: glow 1.5s infinite;
+}
+.model-phase-badge.ready { 
+    background: rgba(48, 209, 88, 0.08);
+    border-color: rgba(48, 209, 88, 0.3);
+    color: var(--accent-green);
+}
+.phase-icon { font-size: 1.5rem; }
+
+.training-progress-wrap { display: flex; flex-direction: column; gap: 6px; }
+.training-progress-bar-bg { background: rgba(255,255,255,0.05); border-radius: 50px; height: 8px; overflow: hidden; }
+.training-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-cyan), #00E6FF);
+    border-radius: 50px;
+    transition: width 0.8s ease;
+    box-shadow: 0 0 10px rgba(0,163,255,0.4);
+}
+.progress-label { font-size: 0.8rem; color: var(--text-muted); text-align: right; }
+
+.model-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.model-stat-item { background: rgba(0,0,0,0.2); border-radius: 10px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.04); }
+.mstat-label { display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+.mstat-value { font-family: var(--font-heading); font-size: 1.1rem; font-weight: 700; color: var(--text-main); }
+
+/* ── Prédiction ── */
+.prediction-body { display: flex; flex-direction: column; gap: 18px; flex: 1; }
+
+.prediction-main {
+    background: rgba(0, 163, 255, 0.06);
+    border: 1px solid rgba(0, 163, 255, 0.15);
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+}
+.pred-label { display: block; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+.pred-value { font-family: var(--font-heading); font-size: 3.2rem; font-weight: 800; color: var(--accent-cyan); text-shadow: 0 0 20px rgba(0,163,255,0.4); }
+
+.confidence-bar-wrap { display: flex; flex-direction: column; gap: 8px; }
+.confidence-bar-label { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); }
+.confidence-bar-bg { background: rgba(255,255,255,0.05); border-radius: 50px; height: 10px; overflow: hidden; }
+.confidence-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #FF7F00, #00A3FF, #30D158);
+    border-radius: 50px;
+    transition: width 1s ease;
+}
+
+/* Forecast chips */
+.forecast-steps { display: flex; flex-direction: column; gap: 8px; }
+.forecast-title { font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+.forecast-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.forecast-chip {
+    background: rgba(0, 163, 255, 0.08);
+    border: 1px solid rgba(0, 163, 255, 0.15);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    font-family: var(--font-heading);
+    color: var(--accent-cyan);
+    flex: 1;
+    text-align: center;
+    min-width: 60px;
+    transition: all 0.4s ease;
+}
+
+/* ── Anomalies ── */
+.anomaly-body { display: flex; flex-direction: column; gap: 14px; flex: 1; }
+
+.anomaly-gauge-wrap { display: flex; justify-content: center; }
+.anomaly-gauge { filter: drop-shadow(0 0 8px rgba(0,163,255,0.2)); }
+
+.anomaly-score-display { text-align: center; }
+.anomaly-score-label { display: block; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+.anomaly-score-value { font-family: var(--font-heading); font-size: 2rem; font-weight: 700; color: var(--text-main); transition: color 0.4s; }
+
+.anomaly-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    background: rgba(48, 209, 88, 0.08);
+    border: 1px solid rgba(48, 209, 88, 0.25);
+    color: var(--accent-green);
+    transition: all 0.4s ease;
+}
+.anomaly-status-badge.warning { 
+    background: rgba(255, 127, 0, 0.1); 
+    border-color: rgba(255, 127, 0, 0.3); 
+    color: var(--accent-orange); 
+}
+.anomaly-status-badge.critical { 
+    background: rgba(255, 69, 58, 0.12); 
+    border-color: rgba(255, 69, 58, 0.4); 
+    color: var(--accent-red);
+    animation: pulse 1s infinite;
+}
+
+/* Journal d'anomalies */
+.anomaly-log {
+    flex: 1;
+    min-height: 60px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    overflow-y: auto;
+    max-height: 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.anomaly-log-empty { text-align: center; color: #3a4d6a; font-style: italic; }
+.anomaly-log-entry { display: flex; gap: 8px; align-items: center; }
+.anomaly-log-entry .log-time { color: #4a6080; font-size: 0.72rem; min-width: 50px; }
+.anomaly-log-entry .log-msg  { color: var(--accent-orange); }
+
+/* ── Recommandation ── */
+.recommendation-body { display: flex; flex-direction: column; gap: 16px; flex: 1; }
+
+.rec-mode-display { display: flex; align-items: center; gap: 16px; }
+.rec-icon { font-size: 2.8rem; }
+.rec-mode-text {
+    font-family: var(--font-heading);
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--accent-green);
+    transition: color 0.4s;
+    letter-spacing: 0.5px;
+}
+.rec-mode-text.orange { color: var(--accent-orange); }
+.rec-mode-text.red    { color: var(--accent-red); animation: pulse 1s infinite; }
+.rec-mode-text.cyan   { color: var(--accent-cyan); }
+
+.rec-reason {
+    background: rgba(0,0,0,0.25);
+    border-left: 3px solid var(--accent-cyan);
+    padding: 12px 15px;
+    border-radius: 0 10px 10px 0;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    transition: border-color 0.4s;
+}
+
+.rec-trend-row { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+.rec-trend-label { color: var(--text-muted); }
+.rec-trend-value { font-family: var(--font-heading); font-weight: 700; color: var(--accent-cyan); }
+
+/* ── Settings IA info cards ── */
+.setting-info-card {
+    background: rgba(0,0,0,0.2);
+    border: 1px solid rgba(0,163,255,0.08);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.si-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+.si-value { font-family: var(--font-heading); font-size: 0.95rem; font-weight: 600; color: var(--text-main); }
+
+</style>
+</head>
+<body>
+    <div class="app-layout">
+        
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 200 200" width="45" height="45" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <linearGradient id="gradDark" x1="0%" y1="100%" x2="100%" y2="0%">
+                          <stop offset="0%" style="stop-color:#001F54;stop-opacity:1" />
+                          <stop offset="100%" style="stop-color:#00509E;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="gradCyan" x1="0%" y1="100%" x2="100%" y2="0%">
+                          <stop offset="0%" style="stop-color:#00A3FF;stop-opacity:1" />
+                          <stop offset="100%" style="stop-color:#00E6FF;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="gradOrange" x1="0%" y1="100%" x2="100%" y2="0%">
+                          <stop offset="0%" style="stop-color:#FF7F00;stop-opacity:1" />
+                          <stop offset="100%" style="stop-color:#FFAA00;stop-opacity:1" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M 40,160 L 100,40 L 120,80 L 70,160 Z" fill="url(#gradDark)" />
+                      <path d="M 115,100 L 140,140 L 180,160 Z" fill="url(#gradDark)" />
+                      <path d="M 95,110 L 170,50 L 155,50 L 185,35 L 185,65 L 175,55 L 105,115 Z" fill="url(#gradCyan)" />
+                      <circle cx="30" cy="110" r="8" fill="none" stroke="url(#gradDark)" stroke-width="6"/>
+                      <path d="M 38,110 L 75,110" stroke="url(#gradDark)" stroke-width="6" />
+                      <path d="M 75,120 L 115,60 L 100,100 L 145,95 L 85,165 L 100,120 Z" fill="url(#gradOrange)" />
+                    </svg>
+                </div>
+                <h1 class="logo-text">ADAPTRON<span class="version">V5</span></h1>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-btn active" id="nav-dashboard" data-target="view-dashboard">
+                    <span class="nav-icon">🚀</span> Dashboard Principal
+                </button>
+                <button class="nav-btn" id="nav-ia" data-target="view-ia">
+                    <span class="nav-icon">🧠</span> IA & Prédictions
+                    <span class="nav-badge" id="anomaly-badge" style="display:none;">!</span>
+                </button>
+                <button class="nav-btn" id="nav-stats" data-target="view-stats">
+                    <span class="nav-icon">📊</span> Économies & ROI
+                </button>
+                <button class="nav-btn" id="nav-settings" data-target="view-settings">
+                    <span class="nav-icon">⚙️</span> Configuration
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="system-status">
+                    <div class="status-indicator"></div>
+                    <span>ESP32 / Pi Connectés</span>
+                </div>
+                <!-- Indicateur ML Mini -->
+                <div class="ml-mini-status" id="ml-mini-status">
+                    <span class="ml-dot" id="ml-dot"></span>
+                    <span id="ml-mini-label">IA: Initialisation...</span>
+                </div>
+                <p>Créé par MS Techniker</p>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="main-content">
+            
+            <!-- ===== VUE 1 : DASHBOARD ===== -->
+            <section id="view-dashboard" class="view-section active">
+                <header class="view-header">
+                    <h2>Vue d'ensemble en direct</h2>
+                    <p class="subtitle">Monitorez instantanément les flux d'énergie hybride de votre installation.</p>
+                </header>
+
+                <div class="dashboard-grid">
+                    <!-- Réseau SNEL -->
+                    <div class="card glass-panel" id="network-stats">
+                        <div class="card-header">
+                            <h3>Réseau SNEL (Entrée)</h3><span class="icon">🔌</span>
+                        </div>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Tension</span>
+                                <div class="stat-value"><span id="val-voltage">--</span> <span class="unit">V</span></div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Fréquence</span>
+                                <div class="stat-value"><span id="val-freq">--</span> <span class="unit">Hz</span></div>
+                            </div>
+                            <div class="stat-item highlight-cyan">
+                                <span class="stat-label">Puissance</span>
+                                <div class="stat-value"><span id="val-power">--</span> <span class="unit">W</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Power Station -->
+                    <div class="card glass-panel orange-border" id="battery-stats">
+                        <div class="card-header">
+                            <h3>Power Station</h3><span class="icon">🔋</span>
+                        </div>
+                        <div class="battery-container">
+                            <div class="battery-visual"><div class="battery-level" id="battery-level-bar" style="width: 100%;"></div></div>
+                            <div class="battery-text">
+                                <span class="soc" id="val-soc">--%</span>
+                                <span class="time-left">Autonomie UPS: En ligne</span>
+                            </div>
+                        </div>
+                        <div class="stats-grid col-2">
+                            <div class="stat-item">
+                                <span class="stat-label">Puis. Secourue</span>
+                                <div class="stat-value highlight-orange"><span id="val-ups-power">--</span> <span class="unit">W</span></div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Mode de Commutation</span>
+                                <div class="stat-value text-cyan">Prêt (< 10ms)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Graphique Historique -->
+                    <div class="card glass-panel col-span-2">
+                        <div class="card-header">
+                            <h3>Graphique Dynamique des Flux</h3><span class="icon">📈</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="liveChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Panneau de Contrôle Physique -->
+                    <div class="card glass-panel col-span-2">
+                        <div class="card-header">
+                            <h3>Commandes Hards</h3><span class="icon">🕹️</span>
+                        </div>
+                        <div class="controls-grid">
+                            <button class="btn btn-cyan" id="btn-ssr" onclick="sendCommand('/api/toggle-ssr')">🛡️ Actionner Relais SSR (Critique)</button>
+                            <button class="btn btn-blue" id="btn-snel" onclick="sendCommand('/api/cmd?action=force_snel')">🔌 Forcer Régime SNEL</button>
+                            <button class="btn btn-orange" id="btn-ups" onclick="sendCommand('/api/cmd?action=force_ups')">🔋 Forcer Décharge Batterie</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- ===== VUE 2 : IA & PRÉDICTIONS ===== -->
+            <section id="view-ia" class="view-section hidden">
+                <header class="view-header">
+                    <h2>Intelligence Artificielle</h2>
+                    <p class="subtitle">Réseau de neurones entraîné en temps réel sur vos données de consommation.</p>
+                </header>
+
+                <div class="dashboard-grid">
+
+                    <!-- Statut du Modèle -->
+                    <div class="card glass-panel ia-card">
+                        <div class="card-header">
+                            <h3>Statut du Modèle</h3><span class="icon">🧠</span>
+                        </div>
+                        <div class="model-status-body">
+                            <div class="model-phase-badge" id="model-phase-badge">
+                                <span class="phase-icon">⏳</span>
+                                <span id="model-phase-text">Collecte de données...</span>
+                            </div>
+                            <div class="training-progress-wrap">
+                                <div class="training-progress-bar-bg">
+                                    <div class="training-progress-bar-fill" id="training-progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <span id="training-progress-label" class="progress-label">0 / 40 échantillons</span>
+                            </div>
+                            <div class="model-stats-grid">
+                                <div class="model-stat-item">
+                                    <span class="mstat-label">Cycles d'entraînement</span>
+                                    <span class="mstat-value" id="ml-cycles">0</span>
+                                </div>
+                                <div class="model-stat-item">
+                                    <span class="mstat-label">Loss (MSE)</span>
+                                    <span class="mstat-value" id="ml-loss">—</span>
+                                </div>
+                                <div class="model-stat-item">
+                                    <span class="mstat-label">Confiance</span>
+                                    <span class="mstat-value highlight-cyan" id="ml-confidence">—</span>
+                                </div>
+                                <div class="model-stat-item">
+                                    <span class="mstat-label">Buffer</span>
+                                    <span class="mstat-value" id="ml-buffer">0 pts</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-dark mt-4" onclick="window.AdaptronML.reset(); updateMLUI(null);">🔄 Réinitialiser le Modèle</button>
+                        </div>
+                    </div>
+
+                    <!-- Prédiction Courante -->
+                    <div class="card glass-panel ia-card">
+                        <div class="card-header">
+                            <h3>Prédiction de Consommation</h3><span class="icon">🔮</span>
+                        </div>
+                        <div class="prediction-body">
+                            <div class="prediction-main">
+                                <span class="pred-label">Prochaine mesure prédite</span>
+                                <div class="pred-value">
+                                    <span id="pred-next-power">—</span>
+                                    <span class="unit">W</span>
+                                </div>
+                            </div>
+                            <div class="confidence-bar-wrap">
+                                <div class="confidence-bar-label">
+                                    <span>Confiance modèle</span>
+                                    <span id="confidence-pct">0%</span>
+                                </div>
+                                <div class="confidence-bar-bg">
+                                    <div class="confidence-bar-fill" id="confidence-bar-fill" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                            <!-- Forecast mini-tableau -->
+                            <div class="forecast-steps" id="forecast-steps">
+                                <span class="forecast-title">Prévision (t+1 → t+5)</span>
+                                <div class="forecast-row" id="forecast-row">
+                                    <div class="forecast-chip" style="opacity:0.4">t+1: —</div>
+                                    <div class="forecast-chip" style="opacity:0.4">t+2: —</div>
+                                    <div class="forecast-chip" style="opacity:0.4">t+3: —</div>
+                                    <div class="forecast-chip" style="opacity:0.4">t+4: —</div>
+                                    <div class="forecast-chip" style="opacity:0.4">t+5: —</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Graphique de prédiction -->
+                    <div class="card glass-panel col-span-2">
+                        <div class="card-header">
+                            <h3>Historique + Prévision IA</h3><span class="icon">📡</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="mlChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Détection d'Anomalies -->
+                    <div class="card glass-panel ia-card">
+                        <div class="card-header">
+                            <h3>Détection d'Anomalies</h3><span class="icon">🚨</span>
+                        </div>
+                        <div class="anomaly-body">
+                            <div class="anomaly-gauge-wrap">
+                                <div class="anomaly-gauge" id="anomaly-gauge">
+                                    <svg viewBox="0 0 120 70" width="180" height="100">
+                                        <defs>
+                                            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                <stop offset="0%"   stop-color="#30D158"/>
+                                                <stop offset="50%"  stop-color="#FF7F00"/>
+                                                <stop offset="100%" stop-color="#FF453A"/>
+                                            </linearGradient>
+                                        </defs>
+                                        <!-- Arc de fond -->
+                                        <path d="M 10,65 A 50,50 0 0,1 110,65" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10" stroke-linecap="round"/>
+                                        <!-- Arc coloré -->
+                                        <path d="M 10,65 A 50,50 0 0,1 110,65" fill="none" stroke="url(#gaugeGrad)" stroke-width="10" stroke-linecap="round" opacity="0.3"/>
+                                        <!-- Aiguille -->
+                                        <line id="gauge-needle" x1="60" y1="65" x2="60" y2="20" stroke="#00A3FF" stroke-width="3" stroke-linecap="round"
+                                              transform="rotate(0 60 65)"/>
+                                        <circle cx="60" cy="65" r="5" fill="#00A3FF"/>
+                                        <!-- Labels -->
+                                        <text x="8"  y="62" fill="#30D158" font-size="8">OK</text>
+                                        <text x="90" y="62" fill="#FF453A" font-size="8">⚠</text>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="anomaly-score-display">
+                                <span class="anomaly-score-label">Z-Score actuel</span>
+                                <span class="anomaly-score-value" id="anomaly-zscore">—</span>
+                            </div>
+                            <div class="anomaly-status-badge" id="anomaly-status-badge">
+                                <span id="anomaly-status-icon">🟢</span>
+                                <span id="anomaly-status-text">Nominal — Aucune anomalie</span>
+                            </div>
+                            <!-- Journal des anomalies -->
+                            <div class="anomaly-log" id="anomaly-log">
+                                <div class="anomaly-log-empty">Aucune anomalie enregistrée</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recommandation de Mode -->
+                    <div class="card glass-panel ia-card">
+                        <div class="card-header">
+                            <h3>Recommandation IA</h3><span class="icon">🤖</span>
+                        </div>
+                        <div class="recommendation-body" id="recommendation-body">
+                            <div class="rec-mode-display">
+                                <span class="rec-icon" id="rec-icon">🤖</span>
+                                <div class="rec-mode-text" id="rec-mode-text">AUTO IA</div>
+                            </div>
+                            <p class="rec-reason" id="rec-reason">En attente de données...</p>
+                            <div class="rec-trend-row">
+                                <span class="rec-trend-label">Tendance de charge :</span>
+                                <span class="rec-trend-value" id="rec-trend">—</span>
+                            </div>
+                            <button class="btn btn-cyan mt-4" id="btn-apply-rec" onclick="applyMLRecommendation()">
+                                ⚡ Appliquer la Recommandation
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+
+            <!-- ===== VUE 3 : STATISTIQUES ET ROI ===== -->
+            <section id="view-stats" class="view-section hidden">
+                <header class="view-header">
+                    <h2>Bilan et Retour sur Investissement</h2>
+                    <p class="subtitle">Calculs prévisionnels selon les données de Kinshasa (0.15€/kWh).</p>
+                </header>
+
+                <div class="dashboard-grid">
+                    <div class="card glass-panel col-span-2 roi-card">
+                        <div class="card-header">
+                            <h3>Analyse Financière Mensuelle</h3><span class="icon">💰</span>
+                        </div>
+                        <div class="stats-grid col-3 mt-4">
+                            <div class="stat-item box-stat">
+                                <span class="stat-label">Économies sur Écrêtage</span>
+                                <div class="stat-value highlight-cyan"><span id="roi-ecretage">5.62</span> <span class="unit">€</span></div>
+                            </div>
+                            <div class="stat-item box-stat">
+                                <span class="stat-label">Début de Délestage Évité</span>
+                                <div class="stat-value highlight-orange"><span id="roi-delestage">6.71</span> <span class="unit">€</span></div>
+                            </div>
+                            <div class="stat-item box-stat highlight-bg">
+                                <span class="stat-label">Économie Totale (Mois)</span>
+                                <div class="stat-value highlight-green"><span id="roi-total">12.33</span> <span class="unit">€</span></div>
+                            </div>
+                        </div>
+                        <div class="roi-simulator mt-4">
+                            <h4>Simulation du ROI sur le matériel v5</h4>
+                            <p>Avec un coût d'installation de 500€, amortissement prévu dans : <strong id="roi-years" class="highlight-cyan">3.4 ans</strong>.</p>
+                            <input type="range" id="consumption-slider" min="50" max="500" value="150" class="styled-slider">
+                            <p>Simulation consommation (kWh/mois) : <span id="simul-kwh">150</span> kWh</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- ===== VUE 4 : PARAMÈTRES ===== -->
+            <section id="view-settings" class="view-section hidden">
+                <header class="view-header">
+                    <h2>Configuration Système</h2>
+                    <p class="subtitle">Ajustement du contrôleur TRIAC et de la communication.</p>
+                </header>
+
+                <div class="dashboard-grid">
+                    <div class="card glass-panel">
+                        <div class="card-header">
+                            <h3>Régulation TRIAC</h3><span class="icon">🎛️</span>
+                        </div>
+                        <form class="settings-form" onsubmit="event.preventDefault(); alert('Paramètres sauvegardés sur le Raspberry Pi');">
+                            <div class="form-group">
+                                <label>Seuil d'Écrêtage (Watts) :</label>
+                                <input type="number" id="setting-threshold" value="3000" class="input-field">
+                            </div>
+                            <div class="form-group">
+                                <label>Mode Bus Régulé :</label>
+                                <select id="setting-mode" class="input-field">
+                                    <option>Adaptatif (Machine Learning)</option>
+                                    <option>Seuil Fixe</option>
+                                    <option>Coupure Totale</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-blue mt-4">Sauvegarder Configuration</button>
+                        </form>
+                    </div>
+
+                    <div class="card glass-panel">
+                        <div class="card-header">
+                            <h3>Réseau & Communication API</h3><span class="icon">📡</span>
+                        </div>
+                        <form class="settings-form">
+                            <div class="form-group">
+                                <label>Adresse IP ESP32 cible :</label>
+                                <input type="text" id="target-ip" value="http://192.168.1.100" class="input-field">
+                                <small>Si hébergé sur le Raspberry Pi, entrez l'IP de l'ESP32 pour lire le PZEM.</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Intervalle Polling (ms) :</label>
+                                <input type="number" id="poll-interval" value="2000" class="input-field">
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Paramètres IA -->
+                    <div class="card glass-panel col-span-2">
+                        <div class="card-header">
+                            <h3>Paramètres du Moteur IA</h3><span class="icon">🧠</span>
+                        </div>
+                        <div class="stats-grid col-3">
+                            <div class="setting-info-card">
+                                <span class="si-label">Architecture</span>
+                                <span class="si-value">Dense 22→32→16→8→5</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Optimizer</span>
+                                <span class="si-value">Adam (lr=0.0015)</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Fenêtre d'entrée</span>
+                                <span class="si-value">20 pas de temps</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Seuil anomalie (Z)</span>
+                                <span class="si-value">2.8σ</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Rythme réentraînement</span>
+                                <span class="si-value">Tous les 20 pts</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Bibliothèque</span>
+                                <span class="si-value highlight-cyan">TensorFlow.js 4.17</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Moteur IA -->
+    
+    <!-- Application principale -->
+    <script>
+/**
+ * ============================================================
+ * ADAPTRON V5 — Moteur IA / Machine Learning
+ * Basé sur TensorFlow.js (in-browser, temps réel)
+ * ============================================================
+ * Fonctionnalités :
+ *   1. Réseau de neurones dense → prédiction consommation (t+1, t+5)
+ *   2. Détection d'anomalies par Z-score sur fenêtre glissante
+ *   3. Recommandation de mode optimal (SNEL / Hybride / Batterie)
+ *   4. Entraînement incrémental online (aucun serveur requis)
+ * ============================================================
+ */
+
+class AdaptronMLEngine {
+    constructor() {
+        // --- Hyperparamètres ---
+        this.WINDOW_SIZE       = 20;   // Taille de la fenêtre d'entrée (pas de temps)
+        this.FORECAST_STEPS    = 5;    // Pas de prédiction future
+        this.MIN_TRAIN_SAMPLES = 40;   // Seuils avant premier entraînement
+        this.RETRAIN_EVERY     = 20;   // Réentraîner tous les N nouveaux points
+        this.MAX_BUFFER        = 300;  // Taille max du buffer de données
+        this.BATCH_SIZE        = 32;
+        this.EPOCHS_PER_CYCLE  = 8;
+        this.ANOMALY_THRESHOLD = 2.8;  // Z-score
+
+        // --- État interne ---
+        this.model             = null;
+        this.isModelReady      = false;
+        this.isTraining        = false;
+        this.samplesSinceRetrain = 0;
+        this.totalSamplesAdded = 0;
+        this.lastTrainLoss     = null;
+        this.trainingCycles    = 0;
+
+        // --- Buffers de données (normalisées) ---
+        this.powerBuffer   = [];  // Puissance SNEL
+        this.socBuffer     = [];  // State of Charge
+        this.voltageBuffer = [];  // Tension réseau
+
+        // --- Statistiques glissantes (pour normalisation + anomalie) ---
+        this.stats = {
+            power:   { mean: 1500, variance: 250000, std: 500, n: 0 },
+            voltage: { mean: 225,  variance: 25,     std: 5,   n: 0 },
+            soc:     { mean: 70,   variance: 400,    std: 20,  n: 0 },
+        };
+
+        // --- Résultats exposés ---
+        this.lastPrediction = null; // { nextPower, forecast[], confidence }
+        this.lastAnomaly    = null; // { isAnomaly, zScore, severity }
+        this.lastRecommendation = null;
+
+        // --- Callbacks UI ---
+        this.onUpdate = null; // appelé après chaque maj
+
+        this._initModel();
+    }
+
+    // ──────────────────────────────────────────────
+    // 1. CONSTRUCTION DU MODÈLE
+    // ──────────────────────────────────────────────
+
+    _initModel() {
+        try {
+            // Architecture : Dense séquentiel adapté aux séries temporelles légères
+            // Entrée : [power_t, power_t-1, ..., power_t-WINDOW, soc_t, volt_t]
+            const inputDim = this.WINDOW_SIZE + 2;
+
+            this.model = tf.sequential({
+                layers: [
+                    tf.layers.dense({
+                        inputShape:  [inputDim],
+                        units:       32,
+                        activation:  'relu',
+                        kernelRegularizer: tf.regularizers.l2({ l2: 0.001 })
+                    }),
+                    tf.layers.batchNormalization(),
+                    tf.layers.dense({ units: 16, activation: 'relu' }),
+                    tf.layers.dropout({ rate: 0.15 }),
+                    tf.layers.dense({ units: 8,  activation: 'relu' }),
+                    tf.layers.dense({ units: this.FORECAST_STEPS, activation: 'linear' })
+                ]
+            });
+
+            this.model.compile({
+                optimizer: tf.train.adam(0.0015),
+                loss: 'meanSquaredError',
+                metrics: ['mae']
+            });
+
+            console.log('[AdaptronML] Modèle initialisé. Architecture :', inputDim, '→ 32 → 16 → 8 →', this.FORECAST_STEPS);
+        } catch (e) {
+            console.error('[AdaptronML] Erreur initialisation TensorFlow.js :', e);
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // 2. NORMALISATION / DÉNORMALISATION (Welford online)
+    // ──────────────────────────────────────────────
+
+    _updateStats(key, value) {
+        const s = this.stats[key];
+        s.n++;
+        const delta  = value - s.mean;
+        s.mean      += delta / s.n;
+        const delta2 = value - s.mean;
+        s.variance  += (delta * delta2 - s.variance) / Math.min(s.n, 200); // fenêtre courte
+        s.std        = Math.sqrt(Math.max(s.variance, 1));
+    }
+
+    _normalize(value, key) {
+        const s = this.stats[key];
+        return (value - s.mean) / (s.std || 1);
+    }
+
+    _denormalize(value, key) {
+        const s = this.stats[key];
+        return value * s.std + s.mean;
+    }
+
+    // ──────────────────────────────────────────────
+    // 3. DÉTECTION D'ANOMALIES (Z-score + tendance)
+    // ──────────────────────────────────────────────
+
+    _detectAnomaly(power) {
+        const zScore = Math.abs((power - this.stats.power.mean) / (this.stats.power.std || 1));
+        const isAnomaly = zScore > this.ANOMALY_THRESHOLD;
+
+        let severity = 'normal';
+        if (zScore > this.ANOMALY_THRESHOLD * 1.5) severity = 'critique';
+        else if (isAnomaly) severity = 'alerte';
+
+        this.lastAnomaly = { isAnomaly, zScore: zScore.toFixed(2), severity, power };
+        return this.lastAnomaly;
+    }
+
+    // ──────────────────────────────────────────────
+    // 4. CONSTRUCTION DES FEATURES POUR LE MODÈLE
+    // ──────────────────────────────────────────────
+
+    _buildFeatureVector() {
+        if (this.powerBuffer.length < this.WINDOW_SIZE) return null;
+
+        // Fenêtre glissante normalisée de puissance
+        const powerWindow = this.powerBuffer.slice(-this.WINDOW_SIZE)
+                                            .map(v => this._normalize(v, 'power'));
+
+        // Contexte instantané
+        const latestSoc  = this._normalize(this.socBuffer[this.socBuffer.length - 1] || 70, 'soc');
+        const latestVolt = this._normalize(this.voltageBuffer[this.voltageBuffer.length - 1] || 225, 'voltage');
+
+        return [...powerWindow, latestSoc, latestVolt];
+    }
+
+    _buildTrainingSamples() {
+        const samples = [];
+        const minLen  = this.WINDOW_SIZE + this.FORECAST_STEPS;
+
+        for (let i = 0; i + minLen <= this.powerBuffer.length; i++) {
+            const xPowerWindow = this.powerBuffer.slice(i, i + this.WINDOW_SIZE)
+                                                 .map(v => this._normalize(v, 'power'));
+            const socVal  = this._normalize(this.socBuffer[i + this.WINDOW_SIZE - 1] || 70, 'soc');
+            const voltVal = this._normalize(this.voltageBuffer[i + this.WINDOW_SIZE - 1] || 225, 'voltage');
+
+            const x = [...xPowerWindow, socVal, voltVal];
+            const y = this.powerBuffer.slice(i + this.WINDOW_SIZE, i + this.WINDOW_SIZE + this.FORECAST_STEPS)
+                                      .map(v => this._normalize(v, 'power'));
+
+            if (y.length === this.FORECAST_STEPS) {
+                samples.push({ x, y });
+            }
+        }
+        return samples;
+    }
+
+    // ──────────────────────────────────────────────
+    // 5. ENTRAÎNEMENT
+    // ──────────────────────────────────────────────
+
+    async _train() {
+        if (this.isTraining || !this.model) return;
+        const samples = this._buildTrainingSamples();
+        if (samples.length < this.MIN_TRAIN_SAMPLES) return;
+
+        this.isTraining = true;
+        this.samplesSinceRetrain = 0;
+
+        try {
+            const xs = tf.tensor2d(samples.map(s => s.x));
+            const ys = tf.tensor2d(samples.map(s => s.y));
+
+            const history = await this.model.fit(xs, ys, {
+                epochs:    this.EPOCHS_PER_CYCLE,
+                batchSize: this.BATCH_SIZE,
+                shuffle:   true,
+                verbose:   0,
+                validationSplit: 0.15,
+            });
+
+            const lastEpoch = history.history.loss.length - 1;
+            this.lastTrainLoss = history.history.loss[lastEpoch].toFixed(6);
+            this.trainingCycles++;
+            this.isModelReady = true;
+
+            xs.dispose();
+            ys.dispose();
+
+            console.log(`[AdaptronML] Cycle #${this.trainingCycles} terminé — Loss: ${this.lastTrainLoss}`);
+        } catch (e) {
+            console.error('[AdaptronML] Erreur entraînement :', e);
+        }
+
+        this.isTraining = false;
+    }
+
+    // ──────────────────────────────────────────────
+    // 6. PRÉDICTION
+    // ──────────────────────────────────────────────
+
+    _predict() {
+        if (!this.isModelReady || !this.model) return null;
+
+        const features = this._buildFeatureVector();
+        if (!features) return null;
+
+        let values = null;
+        tf.tidy(() => {
+            const inputTensor = tf.tensor2d([features]);
+            const output      = this.model.predict(inputTensor);
+            values = Array.from(output.dataSync());
+        });
+
+        if (!values) return null;
+
+        // Dénormaliser les prédictions
+        const forecast = values.map(v => Math.max(0, this._denormalize(v, 'power')));
+
+        // Niveau de confiance basé sur les cycles d'entraînement et le loss
+        const confidenceRaw  = Math.min(95, 40 + this.trainingCycles * 4);
+        const lossBonus      = this.lastTrainLoss ? Math.max(0, 10 - parseFloat(this.lastTrainLoss) * 5000) : 0;
+        const confidence     = Math.min(99, confidenceRaw + lossBonus);
+
+        this.lastPrediction = {
+            nextPower:  forecast[0],
+            forecast,
+            confidence: confidence.toFixed(1),
+        };
+
+        return this.lastPrediction;
+    }
+
+    // ──────────────────────────────────────────────
+    // 7. RECOMMANDATION DE MODE
+    // ──────────────────────────────────────────────
+
+    _computeRecommendation(data) {
+        const { power, soc, voltage } = data;
+        const pred = this.lastPrediction;
+        const anomaly = this.lastAnomaly;
+
+        // Tendance de la consommation
+        let trend = 'stable';
+        if (pred && pred.forecast.length >= 3) {
+            const delta = pred.forecast[pred.forecast.length - 1] - pred.forecast[0];
+            if (delta > 200)       trend = 'hausse';
+            else if (delta < -200) trend = 'baisse';
+        }
+
+        // Logique de recommandation
+        let rec = { mode: 'AUTO IA', color: 'green', icon: '🤖', reason: '', priority: 0 };
+
+        if (anomaly && anomaly.isAnomaly && anomaly.severity === 'critique') {
+            rec = { mode: 'ALERTE CRITIQUE', color: 'red', icon: '🚨',
+                    reason: `Pic anormal détecté ! (Z=${anomaly.zScore}) — Isoler charge immédiatement.`, priority: 10 };
+        } else if (soc < 20) {
+            rec = { mode: 'SNEL FORCÉ', color: 'red', icon: '🔌',
+                    reason: `SOC critique (${soc.toFixed(0)}%) — Passage obligatoire sur réseau SNEL.`, priority: 9 };
+        } else if (voltage < 210 && voltage > 0) {
+            rec = { mode: 'BATTERIE PRIORITAIRE', color: 'orange', icon: '🔋',
+                    reason: `Tension réseau instable (${voltage.toFixed(0)}V < 210V) — Décharge batterie recommandée.`, priority: 8 };
+        } else if (pred && pred.forecast[0] > 3000 && soc > 50) {
+            rec = { mode: 'HYBRIDE PRÉVENTIF', color: 'orange', icon: '⚡',
+                    reason: `Pic prédit à ${pred.forecast[0].toFixed(0)}W — Pré-activation batterie conseillée.`, priority: 7 };
+        } else if (trend === 'hausse' && power > 2000) {
+            rec = { mode: 'HYBRIDE ADAPTATIF', color: 'cyan', icon: '📈',
+                    reason: `Tendance à la hausse détectée — Mode mixte déclenché en anticipation.`, priority: 6 };
+        } else if (soc > 85 && power < 1000) {
+            rec = { mode: 'CHARGE OPTIMALE', color: 'green', icon: '✅',
+                    reason: `Conditions idéales — Batterie chargée, consommation faible.`, priority: 3 };
+        } else {
+            rec = { mode: 'AUTO IA', color: 'green', icon: '🤖',
+                    reason: `Régime nominal — L'hyperviseur gère la commutation automatiquement.`, priority: 1 };
+        }
+
+        rec.trend = trend;
+        this.lastRecommendation = rec;
+        return rec;
+    }
+
+    // ──────────────────────────────────────────────
+    // 8. POINT D'ENTRÉE PRINCIPAL (appelé depuis app.js)
+    // ──────────────────────────────────────────────
+
+    async processDataPoint(data) {
+        const { power, voltage, soc } = data;
+
+        // Mise à jour des statistiques (Welford)
+        this._updateStats('power',   power);
+        this._updateStats('voltage', voltage || 225);
+        this._updateStats('soc',     soc || 70);
+
+        // Ajout au buffer
+        this.powerBuffer.push(power);
+        this.voltageBuffer.push(voltage || 225);
+        this.socBuffer.push(soc || 70);
+
+        this.totalSamplesAdded++;
+        this.samplesSinceRetrain++;
+
+        // Limite les buffers
+        if (this.powerBuffer.length   > this.MAX_BUFFER) this.powerBuffer.shift();
+        if (this.voltageBuffer.length > this.MAX_BUFFER) this.voltageBuffer.shift();
+        if (this.socBuffer.length     > this.MAX_BUFFER) this.socBuffer.shift();
+
+        // Anomalie (immédiat, dès 5 points)
+        if (this.totalSamplesAdded > 5) {
+            this._detectAnomaly(power);
+        }
+
+        // Entraînement (asynchrone)
+        if (this.samplesSinceRetrain >= this.RETRAIN_EVERY &&
+            this.powerBuffer.length >= this.MIN_TRAIN_SAMPLES) {
+            this._train(); // non-bloquant
+        }
+
+        // Prédiction
+        this._predict();
+
+        // Recommandation
+        this._computeRecommendation(data);
+
+        // Notifier l'UI
+        if (this.onUpdate) {
+            this.onUpdate({
+                prediction:     this.lastPrediction,
+                anomaly:        this.lastAnomaly,
+                recommendation: this.lastRecommendation,
+                status:         this.getStatus(),
+            });
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    // 9. STATUT D'EXPOSÉ POUR L'UI
+    // ──────────────────────────────────────────────
+
+    getStatus() {
+        const progress = Math.min(100, (this.totalSamplesAdded / this.MIN_TRAIN_SAMPLES) * 100);
+        return {
+            totalSamples:   this.totalSamplesAdded,
+            trainingCycles: this.trainingCycles,
+            isModelReady:   this.isModelReady,
+            isTraining:     this.isTraining,
+            loss:           this.lastTrainLoss,
+            progress:       progress.toFixed(0),
+            bufferSize:     this.powerBuffer.length,
+        };
+    }
+
+    // Réinitialiser les poids du modèle
+    reset() {
+        tf.disposeVariables();
+        this.powerBuffer   = [];
+        this.voltageBuffer = [];
+        this.socBuffer     = [];
+        this.trainingCycles    = 0;
+        this.totalSamplesAdded = 0;
+        this.isModelReady  = false;
+        this.lastPrediction    = null;
+        this.lastAnomaly       = null;
+        this.lastRecommendation = null;
+        this._initModel();
+        console.log('[AdaptronML] Modèle réinitialisé.');
+    }
+}
+
+// Exporter en tant que singleton global
+window.AdaptronML = new AdaptronMLEngine();
+console.log('[AdaptronML] Moteur IA Adaptron V5 chargé. TF.js :', tf.version.tfjs);
+
+/**
+ * ============================================================
+ * ADAPTRON V5 — Application principale (SPA)
+ * Intègre : Navigation, Dashboard live, ROI, Moteur ML
+ * ============================================================
+ */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    // ══════════════════════════════════════════════════════════
+    // 1. NAVIGATION SPA
+    // ══════════════════════════════════════════════════════════
+    const navButtons   = document.querySelectorAll(".nav-btn");
+    const viewSections = document.querySelectorAll(".view-section");
+
+    navButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+            navButtons.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            viewSections.forEach(sec => {
+                sec.classList.remove("active");
+                sec.classList.add("hidden");
+            });
+            const targetId = btn.getAttribute("data-target");
+            const target = document.getElementById(targetId);
+            if (target) {
+                target.classList.remove("hidden");
+                target.classList.add("active");
+            }
+        });
+    });
+
+
+    // ══════════════════════════════════════════════════════════
+    // 2. CHART.JS — GRAPHIQUE LIVE DASHBOARD
+    // ══════════════════════════════════════════════════════════
+    const ctx = document.getElementById('liveChart');
+    let liveChart = null;
+
+    if (ctx) {
+        liveChart = new Chart(ctx.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Puissance SNEL Réseau (W)',
+                        data: [],
+                        borderColor: '#00A3FF',
+                        backgroundColor: 'rgba(0, 163, 255, 0.1)',
+                        borderWidth: 3,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 1
+                    },
+                    {
+                        label: 'Puissance Power Station (W)',
+                        data: [],
+                        borderColor: '#FF7F00',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        tension: 0.4,
+                        fill: false,
+                        pointRadius: 0
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#8AA4C8', font: { family: 'Outfit', weight: 'bold' } } } },
+                scales: {
+                    x: { ticks: { color: '#8AA4C8', maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { ticks: { color: '#8AA4C8' }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+                },
+                animation: { duration: 400 }
+            }
+        });
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 3. CHART.JS — GRAPHIQUE ML (Historique + Prévision)
+    // ══════════════════════════════════════════════════════════
+    const mlCtx = document.getElementById('mlChart');
+    let mlChart = null;
+
+    if (mlCtx) {
+        mlChart = new Chart(mlCtx.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Mesure Réelle (W)',
+                        data: [],
+                        borderColor: '#00A3FF',
+                        backgroundColor: 'rgba(0, 163, 255, 0.08)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 2
+                    },
+                    {
+                        label: 'Prédiction IA (W)',
+                        data: [],
+                        borderColor: '#30D158',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2.5,
+                        borderDash: [6, 3],
+                        tension: 0.4,
+                        fill: false,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#30D158'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#8AA4C8', font: { family: 'Outfit', weight: 'bold' } } } },
+                scales: {
+                    x: { ticks: { color: '#8AA4C8', maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { ticks: { color: '#8AA4C8' }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+                },
+                animation: { duration: 300 }
+            }
+        });
+    }
+
+    // Références aux éléments du dashboard
+    const valVoltage = document.getElementById("val-voltage");
+    const valFreq    = document.getElementById("val-freq");
+    const valPower   = document.getElementById("val-power");
+    const valUpsPower = document.getElementById("val-ups-power");
+    const valSoc     = document.getElementById("val-soc");
+    const batteryBar = document.getElementById("battery-level-bar");
+
+    // ══════════════════════════════════════════════════════════
+    // 4. BOUCLE DE DONNÉES (ESP32 / Mock) + INJECTION ML
+    // ══════════════════════════════════════════════════════════
+    let lastData = { voltage: 225, freq: 50, power: 1200, upsPower: 300, soc: 75 };
+    let anomalyLog = []; // journal local
+
+    setInterval(async () => {
+        let data = { voltage: 0, freq: 0, power: 0, upsPower: 0, soc: 0 };
+        const targetIp = document.getElementById("target-ip")
+            ? document.getElementById("target-ip").value.trim()
+            : "";
+
+        try {
+            const endpoint = targetIp.endsWith('/')
+                ? targetIp + 'api/data'
+                : targetIp + '/api/data';
+            const res = await fetch(endpoint, { signal: AbortSignal.timeout(1000) });
+            if (res.ok) {
+                data = await res.json();
+            } else { throw new Error("API indisponible"); }
+        } catch (e) {
+            // Mode simulation (dév / démo)
+            const t = Date.now() / 1000;
+            data.voltage  = 225 + Math.sin(t * 0.3) * 8;
+            data.freq     = 50  + Math.cos(t * 0.5) * 0.3;
+            // Simulation de profils de consommation réalistes
+            data.power    = 1400 + Math.sin(t * 0.12) * 600
+                          + Math.random() * 200
+                          + (Math.random() < 0.03 ? 1800 : 0); // spike aléatoire 3%
+            data.upsPower = 280 + Math.random() * 60;
+            data.soc      = Math.max(10, Math.min(100, 75 - (t % 3000) / 100));
+        }
+
+        lastData = data;
+
+        // — Mise à jour Dashboard UI —
+        if (valVoltage) valVoltage.innerText = data.voltage.toFixed(1);
+        if (valFreq)    valFreq.innerText    = data.freq.toFixed(1);
+        if (valPower)   valPower.innerText   = data.power.toFixed(0);
+        if (valUpsPower) valUpsPower.innerText = data.upsPower.toFixed(0);
+
+        const soc = Math.max(0, data.soc);
+        if (valSoc)     valSoc.innerText     = soc.toFixed(1) + "%";
+        if (batteryBar) batteryBar.style.width = soc.toFixed(1) + "%";
+
+        if (soc < 20 && batteryBar) {
+            batteryBar.style.background  = "var(--accent-red)";
+            batteryBar.style.boxShadow   = "0 0 10px rgba(255, 69, 58, 0.4)";
+        } else if (batteryBar) {
+            batteryBar.style.background  = "linear-gradient(90deg, var(--accent-orange), #FFAA00)";
+            batteryBar.style.boxShadow   = "0 0 15px rgba(255, 127, 0, 0.4)";
+        }
+
+        // — Graphique Live —
+        if (liveChart) {
+            const timeStr = new Date().toLocaleTimeString('fr-FR');
+            liveChart.data.labels.push(timeStr);
+            liveChart.data.datasets[0].data.push(data.power);
+            liveChart.data.datasets[1].data.push(data.upsPower);
+            if (liveChart.data.labels.length > 40) {
+                liveChart.data.labels.shift();
+                liveChart.data.datasets[0].data.shift();
+                liveChart.data.datasets[1].data.shift();
+            }
+            liveChart.update();
+        }
+
+        // — Injection dans le moteur ML —
+        if (window.AdaptronML) {
+            await window.AdaptronML.processDataPoint(data);
+        }
+
+    }, 2000);
+
+
+    // ══════════════════════════════════════════════════════════
+    // 5. CALLBACK ML → MÀJ UI IA
+    // ══════════════════════════════════════════════════════════
+    if (window.AdaptronML) {
+        window.AdaptronML.onUpdate = (mlResult) => {
+            updateMLUI(mlResult);
+        };
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 6. MOTEUR ROI
+    // ══════════════════════════════════════════════════════════
+    const slider     = document.getElementById("consumption-slider");
+    const simulKwh   = document.getElementById("simul-kwh");
+    const valEcretage = document.getElementById("roi-ecretage");
+    const valDelestage = document.getElementById("roi-delestage");
+    const valTotal   = document.getElementById("roi-total");
+    const roiYears   = document.getElementById("roi-years");
+
+    function calculerROI(kwhMois) {
+        const tarif         = 0.15;
+        const ecoEcretage   = kwhMois * tarif * 0.25;
+        const ecoDelestage  = kwhMois * tarif * 0.30;
+        const totalMois     = ecoEcretage + ecoDelestage;
+        const anneesROI     = 500 / (totalMois * 12);
+
+        if (simulKwh)   simulKwh.innerText   = kwhMois;
+        if (valEcretage) valEcretage.innerText = ecoEcretage.toFixed(2);
+        if (valDelestage) valDelestage.innerText = ecoDelestage.toFixed(2);
+        if (valTotal)   valTotal.innerText   = totalMois.toFixed(2);
+        if (roiYears)   roiYears.innerText   = anneesROI.toFixed(1) + " ans";
+    }
+
+    if (slider) {
+        slider.addEventListener("input", e => calculerROI(e.target.value));
+        calculerROI(slider.value);
+    }
+
+}); // end DOMContentLoaded
+
+
+// ══════════════════════════════════════════════════════════════
+// 7. MISE À JOUR UI IA (exposé globalement)
+// ══════════════════════════════════════════════════════════════
+window.updateMLUI = function(mlResult) {
+    if (!mlResult) return;
+
+    const { prediction, anomaly, recommendation, status } = mlResult;
+
+    // ── Statut du modèle ──
+    const progressFill  = document.getElementById("training-progress-fill");
+    const progressLabel = document.getElementById("training-progress-label");
+    const phaseBadge    = document.getElementById("model-phase-badge");
+    const phaseText     = document.getElementById("model-phase-text");
+    const mlCycles      = document.getElementById("ml-cycles");
+    const mlLoss        = document.getElementById("ml-loss");
+    const mlConfidence  = document.getElementById("ml-confidence");
+    const mlBuffer      = document.getElementById("ml-buffer");
+    const mlDot         = document.getElementById("ml-dot");
+    const mlMiniLabel   = document.getElementById("ml-mini-label");
+
+    if (status) {
+        const pct = Math.min(100, parseFloat(status.progress));
+        if (progressFill)  progressFill.style.width = pct + "%";
+        if (progressLabel) progressLabel.textContent = `${status.totalSamples} / 40 échantillons`;
+        if (mlCycles)     mlCycles.textContent = status.trainingCycles;
+        if (mlLoss)       mlLoss.textContent   = status.loss || "—";
+        if (mlBuffer)     mlBuffer.textContent = status.bufferSize + " pts";
+
+        // Phase badge
+        if (phaseBadge && phaseText) {
+            if (status.isTraining) {
+                phaseBadge.className = "model-phase-badge training";
+                phaseText.textContent = "⏳ Entraînement en cours...";
+                if (mlDot) { mlDot.className = "ml-dot training"; }
+                if (mlMiniLabel) mlMiniLabel.textContent = "IA: Entraînement...";
+            } else if (status.isModelReady) {
+                phaseBadge.className = "model-phase-badge ready";
+                phaseText.textContent = `✅ Modèle opérationnel (cycle #${status.trainingCycles})`;
+                if (mlDot)       { mlDot.className = "ml-dot ready"; }
+                if (mlMiniLabel) mlMiniLabel.textContent = `IA: Actif (${status.trainingCycles} cycles)`;
+            } else {
+                phaseBadge.className = "model-phase-badge";
+                phaseText.textContent = `⏳ Collecte de données... (${status.totalSamples}/40)`;
+                if (mlDot)       { mlDot.className = "ml-dot collecting"; }
+                if (mlMiniLabel) mlMiniLabel.textContent = `IA: ${status.totalSamples}/40 pts`;
+            }
+        }
+    }
+
+    // ── Prédiction ──
+    if (prediction) {
+        const predEl   = document.getElementById("pred-next-power");
+        const confEl   = document.getElementById("ml-confidence");
+        const confBar  = document.getElementById("confidence-bar-fill");
+        const confPct  = document.getElementById("confidence-pct");
+        const forecRow = document.getElementById("forecast-row");
+
+        if (predEl)  predEl.textContent  = Math.round(prediction.nextPower);
+        if (confEl)  confEl.textContent  = prediction.confidence + "%";
+        if (confBar) confBar.style.width  = prediction.confidence + "%";
+        if (confPct) confPct.textContent  = prediction.confidence + "%";
+
+        // Forecast chips
+        if (forecRow && prediction.forecast) {
+            const chips = forecRow.querySelectorAll(".forecast-chip");
+            prediction.forecast.forEach((val, i) => {
+                if (chips[i]) {
+                    chips[i].textContent = `t+${i+1}: ${Math.round(val)}W`;
+                    chips[i].style.opacity = (1 - i * 0.12).toFixed(2);
+                }
+            });
+        }
+
+        // Graphique ML
+        const mlChart = window._mlChartInstance;
+        if (mlChart) {
+            const timeStr = new Date().toLocaleTimeString('fr-FR');
+            mlChart.data.labels.push(timeStr);
+            mlChart.data.datasets[0].data.push(
+                window._lastRealPower || prediction.nextPower
+            );
+            mlChart.data.datasets[1].data.push(prediction.nextPower);
+            if (mlChart.data.labels.length > 50) {
+                mlChart.data.labels.shift();
+                mlChart.data.datasets[0].data.shift();
+                mlChart.data.datasets[1].data.shift();
+            }
+            mlChart.update();
+        }
+    }
+
+    // ── Anomalies ──
+    if (anomaly) {
+        const zsEl     = document.getElementById("anomaly-zscore");
+        const badge    = document.getElementById("anomaly-status-badge");
+        const badgeIcon = document.getElementById("anomaly-status-icon");
+        const badgeText = document.getElementById("anomaly-status-text");
+        const needle   = document.getElementById("gauge-needle");
+        const anomalyBadgeNav = document.getElementById("anomaly-badge");
+
+        const zScore = parseFloat(anomaly.zScore) || 0;
+
+        if (zsEl) {
+            zsEl.textContent = zScore.toFixed(2) + "σ";
+            zsEl.style.color = zScore > 2.8 ? "var(--accent-red)" :
+                               zScore > 1.5 ? "var(--accent-orange)" : "var(--accent-green)";
+        }
+
+        // Rotation aiguille (-90° = 0, +90° = max)
+        if (needle) {
+            const angle = Math.min(180, (zScore / 4) * 180) - 90;
+            needle.setAttribute("transform", `rotate(${angle} 60 65)`);
+        }
+
+        if (badge && badgeIcon && badgeText) {
+            if (anomaly.severity === 'critique') {
+                badge.className = "anomaly-status-badge critical";
+                badgeIcon.textContent = "🔴";
+                badgeText.textContent = `CRITIQUE ! Pic de consommation anormal (Z=${anomaly.zScore})`;
+                if (anomalyBadgeNav) anomalyBadgeNav.style.display = "flex";
+                // Ajouter au journal
+                addAnomalyLog(`Anomalie critique — Z=${anomaly.zScore} — ${Math.round(anomaly.power)}W`);
+            } else if (anomaly.severity === 'alerte') {
+                badge.className = "anomaly-status-badge warning";
+                badgeIcon.textContent = "🔶";
+                badgeText.textContent = `Alerte — Valeur inhabituelle (Z=${anomaly.zScore})`;
+                if (anomalyBadgeNav) anomalyBadgeNav.style.display = "flex";
+            } else {
+                badge.className = "anomaly-status-badge";
+                badgeIcon.textContent = "🟢";
+                badgeText.textContent = "Nominal — Aucune anomalie détectée";
+                if (anomalyBadgeNav) anomalyBadgeNav.style.display = "none";
+            }
+        }
+    }
+
+    // ── Recommandation ──
+    if (recommendation) {
+        const recIcon  = document.getElementById("rec-icon");
+        const recMode  = document.getElementById("rec-mode-text");
+        const recReason = document.getElementById("rec-reason");
+        const recTrend  = document.getElementById("rec-trend");
+
+        if (recIcon)   recIcon.textContent  = recommendation.icon;
+        if (recMode) {
+            recMode.textContent  = recommendation.mode;
+            recMode.className = "rec-mode-text " + (recommendation.color || "green");
+        }
+        if (recReason) {
+            recReason.textContent = recommendation.reason;
+            recReason.style.borderLeftColor = recommendation.color === 'red'    ? "var(--accent-red)"    :
+                                              recommendation.color === 'orange' ? "var(--accent-orange)" :
+                                              recommendation.color === 'cyan'   ? "var(--accent-cyan)"   :
+                                              "var(--accent-green)";
+        }
+        if (recTrend) {
+            const trendMap = { hausse: '📈 Hausse', baisse: '📉 Baisse', stable: '➡️ Stable' };
+            recTrend.textContent = trendMap[recommendation.trend] || "—";
+        }
+    }
+};
+
+// Ajouter une entrée au journal des anomalies
+function addAnomalyLog(msg) {
+    const logEl = document.getElementById("anomaly-log");
+    if (!logEl) return;
+
+    // Retirer le message "vide"
+    const empty = logEl.querySelector(".anomaly-log-empty");
+    if (empty) empty.remove();
+
+    const entry = document.createElement("div");
+    entry.className = "anomaly-log-entry";
+    const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg">⚠ ${msg}</span>`;
+    logEl.insertBefore(entry, logEl.firstChild);
+
+    // Limiter à 6 entrées
+    while (logEl.children.length > 6) logEl.removeChild(logEl.lastChild);
+}
+
+// Exposer le dernier mlChart pour updateMLUI
+document.addEventListener("DOMContentLoaded", () => {
+    const mlCtxRef = document.getElementById('mlChart');
+    if (mlCtxRef) {
+        // chart.js crée l'instance ici, on la stocke globalement après init
+        setTimeout(() => {
+            const charts = Object.values(Chart.instances || {});
+            const mlChartInstance = charts.find(c => c.canvas && c.canvas.id === 'mlChart');
+            window._mlChartInstance = mlChartInstance || null;
+        }, 500);
+    }
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// 8. COMMANDES HARDWARE (Boutons → ESP32)
+// ══════════════════════════════════════════════════════════════
+window.sendCommand = async function(endpoint) {
+    try {
+        const targetIp = document.getElementById("target-ip")
+            ? document.getElementById("target-ip").value.trim()
+            : "";
+        const finalUrl = targetIp.endsWith('/')
+            ? targetIp.slice(0, -1) + endpoint
+            : targetIp + endpoint;
+
+        await fetch(finalUrl, { method: 'POST' });
+        alert("✅ Commande relayée via le réseau au contrôleur !");
+    } catch (e) {
+        alert("❌ Impossible de joindre l'ESP32. (Vérifiez la connexion réseau)");
+    }
+};
+
+// Applique la recommandation IA comme commande vers l'ESP32
+window.applyMLRecommendation = async function() {
+    const ml = window.AdaptronML;
+    if (!ml || !ml.lastRecommendation) {
+        alert("⚠ Aucune recommandation IA disponible pour l'instant.");
+        return;
+    }
+
+    const rec = ml.lastRecommendation;
+    let action = "auto";
+    if (rec.mode.includes("SNEL"))    action = "force_snel";
+    else if (rec.mode.includes("BATTERIE") || rec.mode.includes("BATT")) action = "force_ups";
+
+    const endpoint = `/api/cmd?action=${action}&source=ml`;
+    await window.sendCommand(endpoint);
+};
+
+</script>
+</body>
+</html>
+
+)rawliteral";
+
+// ==========================================
+// MÉTHODES API / WEBSERVER
+// ==========================================
+void setupRouting() {
+  // 0. Interface graphique 
+  server.on("/", HTTP_GET, []() {
+    server.send(200, "text/html", INDEX_HTML);
+  });
+
+  // 1. Récupération des données temps réel
+  server.on("/api/data", HTTP_GET, []() {
+    StaticJsonDocument<256> doc;
+    
+    float power = pzem.power();
+    float voltage = pzem.voltage();
+    float frequency = pzem.frequency();
+    
+    // Fallback si PZEM non connecté pour test
+    doc["power"] = isnan(power) ? 1450.5 : power;
+    doc["voltage"] = isnan(voltage) ? 230.2 : voltage;
+    doc["freq"] = isnan(frequency) ? 50.0 : frequency; // 'freq' requis par l'UI
+    doc["soc"] = batterySOC;
+    doc["upsPower"] = 320.0; // Consommation sur batterie simulée
+    doc["ssrStatus"] = ssrStatus;
+
+    String response;
+    serializeJson(doc, response);
+    
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", response);
+  });
+
+  // 2. Actionner le relais SSR
+  server.on("/api/toggle-ssr", HTTP_POST, []() {
+    ssrStatus = !ssrStatus;
+    digitalWrite(PIN_SSR, ssrStatus ? HIGH : LOW);
+    
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "text/plain", "OK");
+  });
+
+  // 3. Commandes spécifiques (Force SNEL, Force UPS commandés par l'IA ou Flutter)
+  server.on("/api/cmd", HTTP_POST, []() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+
+    if (server.hasArg("action")) {
+      String action = server.arg("action");
+      Serial.println("\n[MOTEUR] Action requise : " + action);
+
+      if (action == "force_snel" || action == "FORCE_SNEL") {
+         ssrStatus = false;
+         digitalWrite(PIN_SSR, LOW);
+         Serial.println("Action: Mode Secteur (SNEL) Forcé - SSR OFF");
+      } 
+      else if (action == "force_ups" || action == "FORCE_UPS") {
+         ssrStatus = true;
+         digitalWrite(PIN_SSR, HIGH);
+         Serial.println("Action: Mode Batterie (UPS) Forcé - SSR ON");
+      }
+      server.send(200, "text/plain", "Action reçue: " + action);
+    } else {
+      server.send(400, "text/plain", "Action manquante");
+    }
+  });
+}
+
+// ==========================================
+// CODE D'AMORCE ESP32
+// ==========================================
+void setup() {
+  Serial.begin(115200);
+  
+  pinMode(PIN_SSR, OUTPUT);
+  pinMode(PIN_TRIAC, OUTPUT);
+  digitalWrite(PIN_SSR, LOW);
+
+  // Mode Point d'Accès SEUL (Fonctionne 100% hors ligne et sans Box Internet)
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ssid, password);
+  
+  setupRouting();
+  
+  server.begin();
+  Serial.println("\n✅ Serveur ADAPTRON V5 prêt en mode HORS LIGNE (Point d'accès) !");
+  Serial.print("➡️ Connectez-vous au WiFi 'ADAPTRON_V5_HORS_LIGNE' puis naviguez vers : ");
+  Serial.println(WiFi.softAPIP().toString());
+}
+
+void loop() {
+  server.handleClient();
+  
+  // Simulation décharge batterie lente
+  static unsigned long lastUpdate = 0;
+  if (millis() - lastUpdate > 10000) {
+    batterySOC -= 0.1;
+    if (batterySOC < 10) batterySOC = 95.0;
+    lastUpdate = millis();
+  }
+}
+

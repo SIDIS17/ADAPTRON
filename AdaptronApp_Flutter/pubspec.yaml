@@ -1,0 +1,17 @@
+name: adaptron_app
+description: Adaptron V5 Mobile App System Manager.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  fl_chart: ^0.65.0
+  google_fonts: ^6.1.0
+
+flutter:
+  uses-material-design: true

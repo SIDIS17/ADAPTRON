@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .gauge-segment {
+            clip-path: polygon(0% 0%, 90% 0%, 100% 100%, 10% 100%);
+        }
+        .custom-toggle:checked + .toggle-bg {
+            background-color: #ff7f1c;
+        }
+        .custom-toggle:checked + .toggle-bg .toggle-dot {
+            transform: translateX(100%);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-fixed": "#001b3d",
+                        "secondary-container": "#ff7f1c",
+                        "inverse-surface": "#e0e3e5",
+                        "surface-variant": "#323537",
+                        "on-surface": "#e0e3e5",
+                        "on-secondary-fixed-variant": "#753400",
+                        "error": "#ffb4ab",
+                        "tertiary": "#8bceff",
+                        "secondary": "#ffb68b",
+                        "on-tertiary-container": "#0093d3",
+                        "tertiary-fixed": "#c9e6ff",
+                        "on-primary-container": "#718bb9",
+                        "primary-container": "#00234b",
+                        "on-error-container": "#ffdad6",
+                        "on-primary-fixed-variant": "#2c4771",
+                        "primary-fixed": "#d6e3ff",
+                        "background": "#101415",
+                        "surface-container-lowest": "#0b0f10",
+                        "on-primary": "#123059",
+                        "surface-bright": "#363a3b",
+                        "outline-variant": "#43474e",
+                        "tertiary-container": "#00263b",
+                        "surface-container-highest": "#323537",
+                        "on-secondary-container": "#602a00",
+                        "on-secondary": "#522300",
+                        "primary-fixed-dim": "#adc7f8",
+                        "inverse-primary": "#455f8a",
+                        "outline": "#8e9099",
+                        "surface-container": "#1d2022",
+                        "secondary-fixed": "#ffdbc8",
+                        "tertiary-fixed-dim": "#8bceff",
+                        "on-tertiary-fixed-variant": "#004b6f",
+                        "on-tertiary-fixed": "#001e2f",
+                        "error-container": "#93000a",
+                        "secondary-fixed-dim": "#ffb68b",
+                        "surface-tint": "#adc7f8",
+                        "surface": "#101415",
+                        "surface-container-high": "#272a2c",
+                        "on-error": "#690005",
+                        "primary": "#adc7f8",
+                        "on-tertiary": "#00344e",
+                        "on-background": "#e0e3e5",
+                        "surface-container-low": "#191c1e",
+                        "surface-dim": "#101415",
+                        "on-secondary-fixed": "#321200",
+                        "on-surface-variant": "#c4c6d0",
+                        "inverse-on-surface": "#2d3133"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "gutter": "24px",
+                        "lg": "24px",
+                        "md": "16px",
+                        "xl": "40px",
+                        "xs": "4px",
+                        "xxl": "64px",
+                        "base": "4px",
+                        "margin": "32px"
+                    },
+                    "fontFamily": {
+                        "mono-data": ["Inter"],
+                        "body-md": ["Inter"],
+                        "h3": ["Space Grotesk"],
+                        "h2": ["Space Grotesk"],
+                        "body-sm": ["Inter"],
+                        "label-caps": ["Space Grotesk"],
+                        "body-lg": ["Inter"],
+                        "h1": ["Space Grotesk"]
+                    },
+                    "fontSize": {
+                        "mono-data": ["14px", {"lineHeight": "1", "letterSpacing": "-0.01em", "fontWeight": "500"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "h3": ["24px", {"lineHeight": "1.3", "letterSpacing": "0", "fontWeight": "600"}],
+                        "h2": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "700"}],
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "h1": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface selection:bg-secondary-container selection:text-white">
+<!-- TopAppBar -->
+<header class="bg-[#00234B] dark:bg-[#00234B] docked full-width top-0 border-b border-white/10 flex justify-between items-center w-full px-8 py-3 h-16 fixed z-50">
+<div class="flex items-center gap-6">
+<span class="text-2xl font-black tracking-tighter text-white uppercase">ADAPTRON</span>
+<nav class="hidden md:flex items-center gap-8 h-full">
+<a class="font-['Space_Grotesk'] uppercase tracking-wider text-xs font-bold text-slate-400 hover:bg-white/5 hover:text-orange-400 transition-colors py-2 px-3 active:scale-95 duration-150" href="#">SURVEILLANCE</a>
+<a class="font-['Space_Grotesk'] uppercase tracking-wider text-xs font-bold text-orange-500 border-b-2 border-orange-500 py-2 px-3 transition-colors active:scale-95 duration-150" href="#">CONFIGURATION SYSTÈME</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden lg:block">
+<input class="bg-primary-container border border-white/10 text-white font-mono-data text-xs px-4 py-2 w-64 focus:outline-none focus:border-secondary-container placeholder:text-slate-500" placeholder="RECHERCHE SÉCURISÉE..." type="text"/>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-slate-400 hover:text-orange-400 transition-colors"><span class="material-symbols-outlined">notifications</span></button>
+<button class="p-2 text-slate-400 hover:text-orange-400 transition-colors"><span class="material-symbols-outlined">settings</span></button>
+<button class="p-2 text-slate-400 hover:text-orange-400 transition-colors"><span class="material-symbols-outlined">account_circle</span></button>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="bg-[#001A38] dark:bg-[#001A38] docked left-0 h-full w-64 border-r border-white/10 flex flex-col fixed left-0 top-0 pt-16 z-40">
+<div class="p-6 flex items-center gap-4 border-b border-white/5">
+<div class="w-10 h-10 bg-primary-container rounded border border-orange-500/30 flex items-center justify-center">
+<span class="material-symbols-outlined text-orange-500">memory</span>
+</div>
+<div>
+<p class="text-orange-500 font-bold font-['Space_Grotesk'] text-sm tracking-tight uppercase">ADAPTRON CORE</p>
+<p class="text-slate-500 font-mono-data text-[10px] uppercase">Gestion Active</p>
+</div>
+</div>
+<nav class="flex-1 py-4 overflow-y-auto">
+<a class="flex items-center gap-4 text-slate-400 px-6 py-4 hover:bg-white/10 hover:text-white transition-all font-['Space_Grotesk'] font-medium active:translate-x-1 duration-200" href="#">
+<span class="material-symbols-outlined">monitoring</span> Dashboard
+        </a>
+<a class="flex items-center gap-4 text-slate-400 px-6 py-4 hover:bg-white/10 hover:text-white transition-all font-['Space_Grotesk'] font-medium active:translate-x-1 duration-200" href="#">
+<span class="material-symbols-outlined">insights</span> Analytics
+        </a>
+<a class="flex items-center gap-4 text-slate-400 px-6 py-4 hover:bg-white/10 hover:text-white transition-all font-['Space_Grotesk'] font-medium active:translate-x-1 duration-200" href="#">
+<span class="material-symbols-outlined">bolt</span> Optimization
+        </a>
+<a class="flex items-center gap-4 bg-white/5 text-orange-500 border-l-4 border-orange-500 px-6 py-4 transition-all font-['Space_Grotesk'] font-medium active:translate-x-1 duration-200" href="#">
+<span class="material-symbols-outlined">settings_input_component</span> Configuration
+        </a>
+</nav>
+<div class="p-4 border-t border-white/10">
+<button class="w-full bg-red-900/30 border border-red-500 text-red-500 py-3 font-label-caps text-[10px] hover:bg-red-500 hover:text-white transition-colors duration-300">
+            ARRÊT D'URGENCE
+        </button>
+</div>
+<div class="py-4 border-t border-white/5">
+<a class="flex items-center gap-4 text-slate-500 px-6 py-3 hover:text-orange-400 text-xs font-['Space_Grotesk'] uppercase" href="#">
+<span class="material-symbols-outlined text-sm">help</span> Support
+        </a>
+<a class="flex items-center gap-4 text-slate-500 px-6 py-3 hover:text-orange-400 text-xs font-['Space_Grotesk'] uppercase" href="#">
+<span class="material-symbols-outlined text-sm">terminal</span> Journaux
+        </a>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="ml-64 pt-24 px-margin pb-24 min-h-screen">
+<header class="mb-gutter flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+<div>
+<h1 class="font-h1 text-h1 text-on-surface tracking-tighter uppercase mb-2">Configuration Système</h1>
+<p class="font-body-md text-on-surface-variant max-w-2xl">Paramétrage technique des unités de stockage thermique PCM et des modules de batteries lithium haute densité.</p>
+</div>
+<div class="flex items-center gap-xs px-md py-sm bg-surface-container rounded border border-outline-variant shadow-sm">
+<div class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></div>
+<span class="font-label-caps text-[10px] text-tertiary uppercase">Liaison de données active</span>
+</div>
+</header>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-12 gap-gutter">
+<!-- Technical Diagram Section -->
+<section class="col-span-12 lg:col-span-8 bg-surface-container border border-white/10 rounded overflow-hidden relative">
+<div class="p-md border-b border-white/5 flex justify-between items-center bg-surface-container-high/50 backdrop-blur-sm">
+<h3 class="font-label-caps text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-orange-500">grid_view</span>
+                    ARCHITECTURE PHYSIQUE DU SYSTÈME
+                </h3>
+<span class="px-2 py-1 bg-primary-container text-primary text-[10px] font-bold border border-primary/20">UNITÉ #A-420</span>
+</div>
+<div class="p-gutter h-[400px] flex items-center justify-center bg-black/20">
+<!-- Simplified System Layout -->
+<div class="grid grid-cols-3 gap-12 items-center w-full max-w-3xl px-8">
+<!-- Unit A (Thermal) -->
+<div class="flex flex-col gap-4">
+<div class="flex justify-between items-center mb-2">
+<span class="text-[10px] font-bold text-tertiary uppercase">Unités PCM</span>
+</div>
+<div class="flex gap-3">
+<div class="flex-1 h-40 bg-tertiary/5 border border-tertiary/20 rounded flex flex-col items-center justify-end p-2">
+<div class="w-full bg-tertiary/30 h-3/4 rounded-sm"></div>
+<span class="text-[8px] text-tertiary font-bold mt-2">PCM-01</span>
+</div>
+<div class="flex-1 h-40 bg-tertiary/5 border border-tertiary/20 rounded flex flex-col items-center justify-end p-2">
+<div class="w-full bg-tertiary/30 h-1/2 rounded-sm"></div>
+<span class="text-[8px] text-tertiary font-bold mt-2">PCM-02</span>
+</div>
+</div>
+</div>
+<!-- Core -->
+<div class="flex flex-col items-center relative">
+<div class="w-24 h-24 rounded-full border-4 border-orange-500/20 flex items-center justify-center">
+<div class="w-16 h-16 rounded-full border-4 border-orange-500 border-t-transparent animate-spin"></div>
+</div>
+<div class="mt-6 text-center">
+<p class="text-[10px] font-bold text-white uppercase tracking-widest">Noyau Core</p>
+<p class="text-[8px] text-slate-500 uppercase mt-1">Liaison active</p>
+</div>
+<!-- Connection Lines (Visual Decor) -->
+<div class="absolute -left-12 top-1/2 w-12 border-t border-dashed border-white/20"></div>
+<div class="absolute -right-12 top-1/2 w-12 border-t border-dashed border-white/20"></div>
+</div>
+<!-- Unit B (Battery) -->
+<div class="flex flex-col gap-3">
+<div class="flex justify-between items-center mb-2">
+<span class="text-[10px] font-bold text-secondary uppercase">Modules Bat.</span>
+</div>
+<div class="h-10 bg-surface-container-highest border border-white/10 rounded flex items-center px-3 justify-between">
+<span class="text-[9px] text-on-surface-variant font-bold">MOD-01</span>
+<div class="flex gap-0.5">
+<div class="w-1.5 h-3 bg-secondary"></div><div class="w-1.5 h-3 bg-secondary"></div><div class="w-1.5 h-3 bg-secondary"></div><div class="w-1.5 h-3 bg-white/5"></div>
+</div>
+</div>
+<div class="h-10 bg-surface-container-highest border border-white/10 rounded flex items-center px-3 justify-between">
+<span class="text-[9px] text-on-surface-variant font-bold">MOD-02</span>
+<div class="flex gap-0.5">
+<div class="w-1.5 h-3 bg-secondary"></div><div class="w-1.5 h-3 bg-secondary"></div><div class="w-1.5 h-3 bg-secondary"></div><div class="w-1.5 h-3 bg-secondary"></div>
+</div>
+</div>
+<div class="h-10 bg-surface-container-highest border border-white/10 rounded flex items-center px-3 justify-between">
+<span class="text-[9px] text-on-surface-variant font-bold">MOD-03</span>
+<div class="flex gap-0.5">
+<div class="w-1.5 h-3 bg-secondary"></div><div class="w-1.5 h-3 bg-secondary"></div><div class="w-1.5 h-3 bg-white/5"></div><div class="w-1.5 h-3 bg-white/5"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Quick Stats Section -->
+<section class="col-span-12 lg:col-span-4 flex flex-col gap-gutter">
+<div class="bg-surface-container border border-white/10 p-gutter flex flex-col justify-between flex-1 relative overflow-hidden group rounded">
+<div>
+<h3 class="font-label-caps text-on-surface-variant text-[11px] mb-6 flex items-center gap-2">
+<span class="w-1 h-1 bg-tertiary"></span> CHARGE THERMIQUE ACTUELLE
+                    </h3>
+<div class="flex items-baseline gap-2">
+<span class="font-h1 text-5xl font-bold text-white tracking-tighter">84.2</span>
+<span class="font-h3 text-xl text-tertiary">kW/h</span>
+</div>
+</div>
+<div class="mt-8 flex gap-1.5 h-8">
+<div class="flex-1 bg-tertiary gauge-segment"></div>
+<div class="flex-1 bg-tertiary gauge-segment"></div>
+<div class="flex-1 bg-tertiary gauge-segment"></div>
+<div class="flex-1 bg-tertiary gauge-segment"></div>
+<div class="flex-1 bg-white/5 gauge-segment"></div>
+<div class="flex-1 bg-white/5 gauge-segment"></div>
+</div>
+</div>
+<div class="bg-surface-container border border-white/10 p-gutter flex-1 rounded">
+<h3 class="font-label-caps text-on-surface-variant text-[11px] mb-gutter flex items-center gap-2">
+<span class="w-1 h-1 bg-secondary"></span> ÉTAT DES MODULES PCM
+                </h3>
+<div class="space-y-1">
+<div class="flex justify-between items-center py-3 border-b border-white/5">
+<span class="font-body-sm text-on-surface-variant">Phase Active</span>
+<span class="font-mono-data text-tertiary font-bold">LIQUIDE [88%]</span>
+</div>
+<div class="flex justify-between items-center py-3 border-b border-white/5">
+<span class="font-body-sm text-on-surface-variant">Coefficient de Transfert</span>
+<span class="font-mono-data text-white font-bold">0.94 λ</span>
+</div>
+<div class="flex justify-between items-center py-3">
+<span class="font-body-sm text-on-surface-variant">Vitesse de Flux</span>
+<span class="font-mono-data text-white font-bold">2.4 m/s</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Configuration Form Section -->
+<section class="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-gutter mt-2">
+<!-- Priority Settings -->
+<div class="bg-surface-container-low border border-white/10 p-gutter rounded shadow-inner">
+<h4 class="font-label-caps text-orange-500 mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">settings_suggest</span>
+                    PRIORITÉS DE DÉCHARGE
+                </h4>
+<div class="space-y-6">
+<div>
+<label class="font-label-caps text-[10px] text-slate-500 block mb-3 uppercase font-bold tracking-wider">Stratégie Opérationnelle</label>
+<div class="relative group">
+<select class="w-full bg-black/40 border border-white/10 text-on-surface p-3 font-body-sm appearance-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/20 transition-all rounded-sm cursor-pointer">
+<option>Optimisation Économique (E-Prior)</option>
+<option>Charge Rapide Industrielle</option>
+<option>Conservation de Longévité</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-3 pointer-events-none text-slate-500">expand_more</span>
+</div>
+</div>
+<div>
+<label class="font-label-caps text-[10px] text-slate-500 block mb-3 uppercase font-bold tracking-wider">Allocation de Puissance (%)</label>
+<div class="px-2">
+<input class="w-full accent-orange-500 h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer" type="range" value="75"/>
+<div class="flex justify-between mt-3 font-mono-data text-[9px] text-slate-500 font-bold">
+<span>MIN</span>
+<span class="text-orange-500">75% (OPTIMAL)</span>
+<span>MAX</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- PCM Thresholds -->
+<div class="bg-surface-container-low border border-white/10 p-gutter rounded shadow-inner">
+<h4 class="font-label-caps text-orange-500 mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">thermostat</span>
+                    SEUILS THERMIQUES PCM
+                </h4>
+<div class="space-y-6">
+<div>
+<label class="font-label-caps text-[10px] text-slate-500 block mb-3 uppercase font-bold tracking-wider">Point de Fusion Ciblé</label>
+<div class="flex items-center gap-3 bg-black/40 border border-white/10 p-3 group focus-within:border-orange-500 transition-all rounded-sm">
+<input class="bg-transparent border-none text-on-surface font-mono-data focus:ring-0 p-0 flex-1" step="0.1" type="number" value="58.5"/>
+<span class="text-xs text-slate-500 font-bold">°C</span>
+</div>
+</div>
+<div>
+<label class="font-label-caps text-[10px] text-slate-500 block mb-3 uppercase font-bold tracking-wider">Limite Critique Supérieure</label>
+<div class="flex items-center gap-3 bg-red-900/10 border border-red-900/30 p-3 focus-within:border-red-500 transition-all rounded-sm">
+<input class="bg-transparent border-none text-red-400 font-mono-data focus:ring-0 p-0 flex-1" step="0.1" type="number" value="82.0"/>
+<span class="text-xs text-red-500/50 font-bold">°C</span>
+</div>
+</div>
+</div>
+</div>
+<!-- System Alerts (Enhanced Toggles) -->
+<div class="bg-surface-container-low border border-white/10 p-gutter rounded shadow-inner">
+<h4 class="font-label-caps text-orange-500 mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">notification_important</span>
+                    MODES D'ALERTE ACTIVÉS
+                </h4>
+<div class="space-y-3">
+<label class="flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 rounded cursor-pointer transition-all border border-transparent hover:border-white/10">
+<span class="font-body-sm text-on-surface font-medium">Surchauffe Batterie</span>
+<div class="relative">
+<input checked="" class="hidden custom-toggle" type="checkbox"/>
+<div class="toggle-bg w-10 h-5 bg-white/10 rounded-full transition-colors relative">
+<div class="toggle-dot absolute left-1 top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
+</div>
+</div>
+</label>
+<label class="flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 rounded cursor-pointer transition-all border border-transparent hover:border-white/10">
+<span class="font-body-sm text-on-surface font-medium">Décharge Critique</span>
+<div class="relative">
+<input checked="" class="hidden custom-toggle" type="checkbox"/>
+<div class="toggle-bg w-10 h-5 bg-white/10 rounded-full transition-colors relative">
+<div class="toggle-dot absolute left-1 top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
+</div>
+</div>
+</label>
+<label class="flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 rounded cursor-pointer transition-all border border-transparent hover:border-white/10">
+<span class="font-body-sm text-slate-500 font-medium">Rapport Hebdomadaire</span>
+<div class="relative">
+<input class="hidden custom-toggle" type="checkbox"/>
+<div class="toggle-bg w-10 h-5 bg-white/10 rounded-full transition-colors relative">
+<div class="toggle-dot absolute left-1 top-1 w-3 h-3 bg-white rounded-full transition-transform"></div>
+</div>
+</div>
+</label>
+</div>
+</div>
+</section>
+<!-- Bottom Actions -->
+<div class="col-span-12 flex flex-col sm:flex-row justify-end gap-4 pt-10">
+<button class="px-8 py-4 border border-white/10 text-on-surface font-label-caps text-xs tracking-[0.2em] hover:bg-white/5 transition-all active:scale-[0.98] rounded-sm">
+                RÉINITIALISER TOUT
+            </button>
+<button class="px-10 py-4 bg-secondary-container text-on-primary-fixed font-label-caps text-xs font-black tracking-[0.2em] hover:brightness-110 shadow-xl shadow-orange-500/20 transition-all active:scale-[0.98] rounded-sm">
+                APPLIQUER LES MODIFICATIONS
+            </button>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="bg-black dark:bg-black docked full-width bottom border-t border-white/5 w-full py-8 px-12 flex flex-col md:flex-row justify-between items-center gap-4 z-50">
+<div>
+<p class="font-['Space_Grotesk'] text-[10px] uppercase tracking-[0.2em] text-slate-500">
+            © 2024 <span class="text-white font-bold">ADAPTRON ENERGY</span>. INDUSTRIAL PRECISION SECURED.
+        </p>
+</div>
+<div class="flex flex-wrap justify-center gap-6 md:gap-8">
+<a class="font-['Space_Grotesk'] text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-orange-400 transition-all" href="#">Tech Specs</a>
+<a class="font-['Space_Grotesk'] text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-orange-400 transition-all" href="#">PCM Storage</a>
+<a class="font-['Space_Grotesk'] text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-orange-400 transition-all" href="#">Battery Safety</a>
+<a class="font-['Space_Grotesk'] text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-orange-400 transition-all" href="#">Privacy</a>
+</div>
+</footer>
+</body></html>

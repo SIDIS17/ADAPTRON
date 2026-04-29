@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADAPTRON V5 - System Manager</title>
+    <meta name="description" content="Tableau de bord intelligent ADAPTRON V5 — Gestion d'énergie hybride avec IA embarquée.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- TensorFlow.js — ML en navigateur -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-layout">
+        
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-header">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 200 200" width="45" height="45" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <linearGradient id="gradDark" x1="0%" y1="100%" x2="100%" y2="0%">
+                          <stop offset="0%" style="stop-color:#001F54;stop-opacity:1" />
+                          <stop offset="100%" style="stop-color:#00509E;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="gradCyan" x1="0%" y1="100%" x2="100%" y2="0%">
+                          <stop offset="0%" style="stop-color:#00A3FF;stop-opacity:1" />
+                          <stop offset="100%" style="stop-color:#00E6FF;stop-opacity:1" />
+                        </linearGradient>
+                        <linearGradient id="gradOrange" x1="0%" y1="100%" x2="100%" y2="0%">
+                          <stop offset="0%" style="stop-color:#FF7F00;stop-opacity:1" />
+                          <stop offset="100%" style="stop-color:#FFAA00;stop-opacity:1" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M 40,160 L 100,40 L 120,80 L 70,160 Z" fill="url(#gradDark)" />
+                      <path d="M 115,100 L 140,140 L 180,160 Z" fill="url(#gradDark)" />
+                      <path d="M 95,110 L 170,50 L 155,50 L 185,35 L 185,65 L 175,55 L 105,115 Z" fill="url(#gradCyan)" />
+                      <circle cx="30" cy="110" r="8" fill="none" stroke="url(#gradDark)" stroke-width="6"/>
+                      <path d="M 38,110 L 75,110" stroke="url(#gradDark)" stroke-width="6" />
+                      <path d="M 75,120 L 115,60 L 100,100 L 145,95 L 85,165 L 100,120 Z" fill="url(#gradOrange)" />
+                    </svg>
+                </div>
+                <h1 class="logo-text">ADAPTRON<span class="version">V5</span></h1>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-btn active" id="nav-dashboard" data-target="view-dashboard">
+                    <span class="nav-icon">🚀</span> Dashboard Principal
+                </button>
+                <button class="nav-btn" id="nav-ia" data-target="view-ia">
+                    <span class="nav-icon">🧠</span> IA & Prédictions
+                    <span class="nav-badge" id="anomaly-badge" style="display:none;">!</span>
+                </button>
+                <button class="nav-btn" id="nav-stats" data-target="view-stats">
+                    <span class="nav-icon">📊</span> Économies & ROI
+                </button>
+                <button class="nav-btn" id="nav-settings" data-target="view-settings">
+                    <span class="nav-icon">⚙️</span> Configuration
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="system-status">
+                    <div class="status-indicator"></div>
+                    <span>ESP32 / Pi Connectés</span>
+                </div>
+                <!-- Indicateur ML Mini -->
+                <div class="ml-mini-status" id="ml-mini-status">
+                    <span class="ml-dot" id="ml-dot"></span>
+                    <span id="ml-mini-label">IA: Initialisation...</span>
+                </div>
+                <p>Créé par MS Techniker</p>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="main-content">
+            
+            <!-- ===== VUE 1 : DASHBOARD ===== -->
+            <section id="view-dashboard" class="view-section active">
+                <header class="view-header">
+                    <h2>Vue d'ensemble en direct</h2>
+                    <p class="subtitle">Monitorez instantanément les flux d'énergie hybride de votre installation.</p>
+                </header>
+
+                <div class="dashboard-grid">
+                    <!-- Réseau SNEL -->
+                    <div class="card glass-panel" id="network-stats">
+                        <div class="card-header">
+                            <h3>Réseau SNEL (Entrée)</h3><span class="icon">🔌</span>
+                        </div>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-label">Tension</span>
+                                <div class="stat-value"><span id="val-voltage">--</span> <span class="unit">V</span></div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Fréquence</span>
+                                <div class="stat-value"><span id="val-freq">--</span> <span class="unit">Hz</span></div>
+                            </div>
+                            <div class="stat-item highlight-cyan">
+                                <span class="stat-label">Puissance</span>
+                                <div class="stat-value"><span id="val-power">--</span> <span class="unit">W</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Power Station -->
+                    <div class="card glass-panel orange-border" id="battery-stats">
+                        <div class="card-header">
+                            <h3>Power Station</h3><span class="icon">🔋</span>
+                        </div>
+                        <div class="battery-container">
+                            <div class="battery-visual"><div class="battery-level" id="battery-level-bar" style="width: 100%;"></div></div>
+                            <div class="battery-text">
+                                <span class="soc" id="val-soc">--%</span>
+                                <span class="time-left">Autonomie UPS: En ligne</span>
+                            </div>
+                        </div>
+                        <div class="stats-grid col-2">
+                            <div class="stat-item">
+                                <span class="stat-label">Puis. Secourue</span>
+                                <div class="stat-value highlight-orange"><span id="val-ups-power">--</span> <span class="unit">W</span></div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Mode de Commutation</span>
+                                <div class="stat-value text-cyan">Prêt (< 10ms)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Graphique Historique -->
+                    <div class="card glass-panel col-span-2">
+                        <div class="card-header">
+                            <h3>Graphique Dynamique des Flux</h3><span class="icon">📈</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="liveChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Panneau de Contrôle Physique -->
+                    <div class="card glass-panel col-span-2">
+                        <div class="card-header">
+                            <h3>Commandes Hards</h3><span class="icon">🕹️</span>
+                        </div>
+                        <div class="controls-grid">
+                            <button class="btn btn-cyan" id="btn-ssr" onclick="sendCommand('/api/toggle-ssr')">🛡️ Actionner Relais SSR (Critique)</button>
+                            <button class="btn btn-blue" id="btn-snel" onclick="sendCommand('/api/cmd?action=force_snel')">🔌 Forcer Régime SNEL</button>
+                            <button class="btn btn-orange" id="btn-ups" onclick="sendCommand('/api/cmd?action=force_ups')">🔋 Forcer Décharge Batterie</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- ===== VUE 2 : IA & PRÉDICTIONS ===== -->
+            <section id="view-ia" class="view-section hidden">
+                <header class="view-header">
+                    <h2>Intelligence Artificielle</h2>
+                    <p class="subtitle">Réseau de neurones entraîné en temps réel sur vos données de consommation.</p>
+                </header>
+
+                <div class="dashboard-grid">
+
+                    <!-- Statut du Modèle -->
+                    <div class="card glass-panel ia-card">
+                        <div class="card-header">
+                            <h3>Statut du Modèle</h3><span class="icon">🧠</span>
+                        </div>
+                        <div class="model-status-body">
+                            <div class="model-phase-badge" id="model-phase-badge">
+                                <span class="phase-icon">⏳</span>
+                                <span id="model-phase-text">Collecte de données...</span>
+                            </div>
+                            <div class="training-progress-wrap">
+                                <div class="training-progress-bar-bg">
+                                    <div class="training-progress-bar-fill" id="training-progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <span id="training-progress-label" class="progress-label">0 / 40 échantillons</span>
+                            </div>
+                            <div class="model-stats-grid">
+                                <div class="model-stat-item">
+                                    <span class="mstat-label">Cycles d'entraînement</span>
+                                    <span class="mstat-value" id="ml-cycles">0</span>
+                                </div>
+                                <div class="model-stat-item">
+                                    <span class="mstat-label">Loss (MSE)</span>
+                                    <span class="mstat-value" id="ml-loss">—</span>
+                                </div>
+                                <div class="model-stat-item">
+                                    <span class="mstat-label">Confiance</span>
+                                    <span class="mstat-value highlight-cyan" id="ml-confidence">—</span>
+                                </div>
+                                <div class="model-stat-item">
+                                    <span class="mstat-label">Buffer</span>
+                                    <span class="mstat-value" id="ml-buffer">0 pts</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-dark mt-4" onclick="window.AdaptronML.reset(); updateMLUI(null);">🔄 Réinitialiser le Modèle</button>
+                        </div>
+                    </div>
+
+                    <!-- Prédiction Courante -->
+                    <div class="card glass-panel ia-card">
+                        <div class="card-header">
+                            <h3>Prédiction de Consommation</h3><span class="icon">🔮</span>
+                        </div>
+                        <div class="prediction-body">
+                            <div class="prediction-main">
+                                <span class="pred-label">Prochaine mesure prédite</span>
+                                <div class="pred-value">
+                                    <span id="pred-next-power">—</span>
+                                    <span class="unit">W</span>
+                                </div>
+                            </div>
+                            <div class="confidence-bar-wrap">
+                                <div class="confidence-bar-label">
+                                    <span>Confiance modèle</span>
+                                    <span id="confidence-pct">0%</span>
+                                </div>
+                                <div class="confidence-bar-bg">
+                                    <div class="confidence-bar-fill" id="confidence-bar-fill" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                            <!-- Forecast mini-tableau -->
+                            <div class="forecast-steps" id="forecast-steps">
+                                <span class="forecast-title">Prévision (t+1 → t+5)</span>
+                                <div class="forecast-row" id="forecast-row">
+                                    <div class="forecast-chip" style="opacity:0.4">t+1: —</div>
+                                    <div class="forecast-chip" style="opacity:0.4">t+2: —</div>
+                                    <div class="forecast-chip" style="opacity:0.4">t+3: —</div>
+                                    <div class="forecast-chip" style="opacity:0.4">t+4: —</div>
+                                    <div class="forecast-chip" style="opacity:0.4">t+5: —</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Graphique de prédiction -->
+                    <div class="card glass-panel col-span-2">
+                        <div class="card-header">
+                            <h3>Historique + Prévision IA</h3><span class="icon">📡</span>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="mlChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Détection d'Anomalies -->
+                    <div class="card glass-panel ia-card">
+                        <div class="card-header">
+                            <h3>Détection d'Anomalies</h3><span class="icon">🚨</span>
+                        </div>
+                        <div class="anomaly-body">
+                            <div class="anomaly-gauge-wrap">
+                                <div class="anomaly-gauge" id="anomaly-gauge">
+                                    <svg viewBox="0 0 120 70" width="180" height="100">
+                                        <defs>
+                                            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                <stop offset="0%"   stop-color="#30D158"/>
+                                                <stop offset="50%"  stop-color="#FF7F00"/>
+                                                <stop offset="100%" stop-color="#FF453A"/>
+                                            </linearGradient>
+                                        </defs>
+                                        <!-- Arc de fond -->
+                                        <path d="M 10,65 A 50,50 0 0,1 110,65" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10" stroke-linecap="round"/>
+                                        <!-- Arc coloré -->
+                                        <path d="M 10,65 A 50,50 0 0,1 110,65" fill="none" stroke="url(#gaugeGrad)" stroke-width="10" stroke-linecap="round" opacity="0.3"/>
+                                        <!-- Aiguille -->
+                                        <line id="gauge-needle" x1="60" y1="65" x2="60" y2="20" stroke="#00A3FF" stroke-width="3" stroke-linecap="round"
+                                              transform="rotate(0 60 65)"/>
+                                        <circle cx="60" cy="65" r="5" fill="#00A3FF"/>
+                                        <!-- Labels -->
+                                        <text x="8"  y="62" fill="#30D158" font-size="8">OK</text>
+                                        <text x="90" y="62" fill="#FF453A" font-size="8">⚠</text>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="anomaly-score-display">
+                                <span class="anomaly-score-label">Z-Score actuel</span>
+                                <span class="anomaly-score-value" id="anomaly-zscore">—</span>
+                            </div>
+                            <div class="anomaly-status-badge" id="anomaly-status-badge">
+                                <span id="anomaly-status-icon">🟢</span>
+                                <span id="anomaly-status-text">Nominal — Aucune anomalie</span>
+                            </div>
+                            <!-- Journal des anomalies -->
+                            <div class="anomaly-log" id="anomaly-log">
+                                <div class="anomaly-log-empty">Aucune anomalie enregistrée</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recommandation de Mode -->
+                    <div class="card glass-panel ia-card">
+                        <div class="card-header">
+                            <h3>Recommandation IA</h3><span class="icon">🤖</span>
+                        </div>
+                        <div class="recommendation-body" id="recommendation-body">
+                            <div class="rec-mode-display">
+                                <span class="rec-icon" id="rec-icon">🤖</span>
+                                <div class="rec-mode-text" id="rec-mode-text">AUTO IA</div>
+                            </div>
+                            <p class="rec-reason" id="rec-reason">En attente de données...</p>
+                            <div class="rec-trend-row">
+                                <span class="rec-trend-label">Tendance de charge :</span>
+                                <span class="rec-trend-value" id="rec-trend">—</span>
+                            </div>
+                            <button class="btn btn-cyan mt-4" id="btn-apply-rec" onclick="applyMLRecommendation()">
+                                ⚡ Appliquer la Recommandation
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+
+            <!-- ===== VUE 3 : STATISTIQUES ET ROI ===== -->
+            <section id="view-stats" class="view-section hidden">
+                <header class="view-header">
+                    <h2>Bilan et Retour sur Investissement</h2>
+                    <p class="subtitle">Calculs prévisionnels selon les données de Kinshasa (0.15€/kWh).</p>
+                </header>
+
+                <div class="dashboard-grid">
+                    <div class="card glass-panel col-span-2 roi-card">
+                        <div class="card-header">
+                            <h3>Analyse Financière Mensuelle</h3><span class="icon">💰</span>
+                        </div>
+                        <div class="stats-grid col-3 mt-4">
+                            <div class="stat-item box-stat">
+                                <span class="stat-label">Économies sur Écrêtage</span>
+                                <div class="stat-value highlight-cyan"><span id="roi-ecretage">5.62</span> <span class="unit">€</span></div>
+                            </div>
+                            <div class="stat-item box-stat">
+                                <span class="stat-label">Début de Délestage Évité</span>
+                                <div class="stat-value highlight-orange"><span id="roi-delestage">6.71</span> <span class="unit">€</span></div>
+                            </div>
+                            <div class="stat-item box-stat highlight-bg">
+                                <span class="stat-label">Économie Totale (Mois)</span>
+                                <div class="stat-value highlight-green"><span id="roi-total">12.33</span> <span class="unit">€</span></div>
+                            </div>
+                        </div>
+                        <div class="roi-simulator mt-4">
+                            <h4>Simulation du ROI sur le matériel v5</h4>
+                            <p>Avec un coût d'installation de 500€, amortissement prévu dans : <strong id="roi-years" class="highlight-cyan">3.4 ans</strong>.</p>
+                            <input type="range" id="consumption-slider" min="50" max="500" value="150" class="styled-slider">
+                            <p>Simulation consommation (kWh/mois) : <span id="simul-kwh">150</span> kWh</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- ===== VUE 4 : PARAMÈTRES ===== -->
+            <section id="view-settings" class="view-section hidden">
+                <header class="view-header">
+                    <h2>Configuration Système</h2>
+                    <p class="subtitle">Ajustement du contrôleur TRIAC et de la communication.</p>
+                </header>
+
+                <div class="dashboard-grid">
+                    <div class="card glass-panel">
+                        <div class="card-header">
+                            <h3>Régulation TRIAC</h3><span class="icon">🎛️</span>
+                        </div>
+                        <form class="settings-form" onsubmit="event.preventDefault(); alert('Paramètres sauvegardés sur le Raspberry Pi');">
+                            <div class="form-group">
+                                <label>Seuil d'Écrêtage (Watts) :</label>
+                                <input type="number" id="setting-threshold" value="3000" class="input-field">
+                            </div>
+                            <div class="form-group">
+                                <label>Mode Bus Régulé :</label>
+                                <select id="setting-mode" class="input-field">
+                                    <option>Adaptatif (Machine Learning)</option>
+                                    <option>Seuil Fixe</option>
+                                    <option>Coupure Totale</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-blue mt-4">Sauvegarder Configuration</button>
+                        </form>
+                    </div>
+
+                    <div class="card glass-panel">
+                        <div class="card-header">
+                            <h3>Réseau & Communication API</h3><span class="icon">📡</span>
+                        </div>
+                        <form class="settings-form">
+                            <div class="form-group">
+                                <label>Adresse IP ESP32 cible :</label>
+                                <input type="text" id="target-ip" value="http://192.168.1.100" class="input-field">
+                                <small>Si hébergé sur le Raspberry Pi, entrez l'IP de l'ESP32 pour lire le PZEM.</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Intervalle Polling (ms) :</label>
+                                <input type="number" id="poll-interval" value="2000" class="input-field">
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Paramètres IA -->
+                    <div class="card glass-panel col-span-2">
+                        <div class="card-header">
+                            <h3>Paramètres du Moteur IA</h3><span class="icon">🧠</span>
+                        </div>
+                        <div class="stats-grid col-3">
+                            <div class="setting-info-card">
+                                <span class="si-label">Architecture</span>
+                                <span class="si-value">Dense 22→32→16→8→5</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Optimizer</span>
+                                <span class="si-value">Adam (lr=0.0015)</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Fenêtre d'entrée</span>
+                                <span class="si-value">20 pas de temps</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Seuil anomalie (Z)</span>
+                                <span class="si-value">2.8σ</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Rythme réentraînement</span>
+                                <span class="si-value">Tous les 20 pts</span>
+                            </div>
+                            <div class="setting-info-card">
+                                <span class="si-label">Bibliothèque</span>
+                                <span class="si-value highlight-cyan">TensorFlow.js 4.17</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Moteur IA -->
+    <script src="js/ml.js"></script>
+    <!-- Application principale -->
+    <script src="js/app.js"></script>
+</body>
+</html>
